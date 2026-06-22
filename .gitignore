@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual env
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Data / outputs
+briefings/
+logs/
+*.log
+*.tmp
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Playwright / browsers if used later
+playwright/.cache/
