@@ -1,10 +1,10 @@
-# Duga Windows GUI + Installer (EXE) — 0.1.0 "Berkut"
+# Duga Windows GUI + Installer (EXE) — 0.2.0 "Berkut-B"
 
-**Duga 0.1.0 "Berkut"**
+**Duga 0.2.0 "Berkut-B"**
 
 Pure `tkinter` + `ttk` GUI matching your PFR Reactor Sizer style.
 
-Version codename: Berkut
+Version codename: Berkut-B
 
 ## New Features (this update)
 - Proper application icon (`icon.ico`)
@@ -16,30 +16,33 @@ Version codename: Berkut
 
 ## Running
 ```powershell
-python windows\radar_gui.py
-python windows\radar_gui.py --minimized
+python windows\duga_gui.py
+python windows\duga_gui.py --minimized
 ```
 
-## Building the EXE
+## Building for the Installer
 ```powershell
 python windows\build_exe.py
 ```
 Requires: `pip install pywin32` (for tray) + PyInstaller.
 
-Result: `dist\Duga.exe`
+This produces a folder distribution at `dist\Duga\` (PyInstaller onedir mode) intended to be packaged by the installer.
+
+**Note:** This is no longer a portable standalone single-file EXE. The build is specifically for proper Windows installation via the installer.
 
 ## Creating the Installer (recommended for distribution)
 
 1. Download & install **Inno Setup** (free): https://jrsoftware.org/isinfo.php
 2. Open `windows\DugaInstaller.iss`
 3. Press **Compile** (or F9)
-4. The installer `DugaSetup-0.1.0-Berkut.exe` will be created in `dist\`
+4. The installer `DugaSetup-0.2.0-Berkut-B.exe` will be created in `dist\`
 
 The installer will:
 - Install to `%LocalAppData%\Duga`
 - Create Start Menu shortcuts
 - Add to Startup (so it launches minimized with tray on login)
 - Register proper uninstaller
+- Support easy in-place updates: running a newer installer will automatically (silently) uninstall the old version first. You can simply double-click the new DugaSetup-*.exe while an older version is installed — it will update cleanly over the top.
 
 ## Tray Behavior
 - Click X → hides to tray (app keeps running)
@@ -57,4 +60,4 @@ The same file is used for:
 ## Persistence
 After running the installer + allowing startup shortcut, Duga will start automatically when you log in and live in the tray.
 
-You can still use the original `radar` CLI tool — they share the same config files.
+You can still use the `duga` CLI tool (if installed via pip) — it shares the same config files.

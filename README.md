@@ -1,6 +1,6 @@
 # Duga
 
-**Duga 0.1.0 "Berkut" — Fully local personal daily briefing agent.**
+**Duga 0.2.0 "Berkut-B" — Fully local personal daily briefing agent.**
 
 Duga gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek by default), and sends you a concise briefing via Telegram.
 
@@ -152,7 +152,27 @@ duga --config-dir ~/my-other-profile --dry-run
 ## Getting API Keys
 
 - DeepSeek: https://platform.deepseek.com (recommended model: `deepseek-v4-flash`)
-- Telegram bot + chat ID: @BotFather on Telegram
+- Apify (for Instagram scraping): https://apify.com (create account and get API token)
+- Brave Search (optional): https://brave.com/search/api/
+- Tavily (optional): https://tavily.com
+- Vision override (optional, falls back to DeepSeek): any compatible OpenAI-style vision endpoint
+
+### Telegram Setup (required - you must use your own bot)
+
+1. Open Telegram and search for **@BotFather**.
+2. Start a chat and send `/newbot`.
+3. Follow the prompts to name your bot (e.g. "MyDugaBot") and choose a username (must end with "bot", e.g. MyDugaBot).
+4. BotFather will give you a **bot token** like `123456789:AAF...`. Paste this into the GUI under "Telegram Bot Token".
+5. **Important**: Message your new bot at least once (e.g. say "hi") so it can send you messages.
+
+### Getting Your Telegram Chat ID
+
+1. Search for **@userinfobot** (or **@getmyid_bot**) in Telegram.
+2. Start a chat with it.
+3. It will immediately reply with your numeric **Chat ID** (something like 987654321).
+4. Paste this into the GUI under "Your Telegram Chat ID".
+
+The bot will only be able to message you if you have started a conversation with it first.
 
 ## Privacy
 
@@ -168,14 +188,14 @@ duga init
 
 See `pyproject.toml` (uses src layout + console script).
 
-## Windows Desktop GUI (EXE) — 0.1.0 "Berkut"
+## Windows Desktop GUI (EXE) — 0.2.0 "Berkut-B"
 
 Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your PFR Reactor Sizer project — Segoe UI, LabelFrames, Notebook tabs, clean native widgets).
 
-- Version: 0.1.0 "Berkut"
+- Version: 0.2.0 "Berkut-B"
 - Tabs: Prompt, Targets, API Keys & Telegram, Run & Schedule
-- Edit prompt, keywords, websites, and all social platforms (x / instagram / linkedin / facebook / threads)
-- Configure and save your API keys locally
+- Edit prompt, keywords, websites (as URLs), and all social platforms (handles/usernames). Instagram handles are scanned via Apify for richer data passed to the LLM.
+- Configure and save your API keys locally (LLM, Telegram bot, Apify, optional Brave/Tavily/Vision)
 - Manual run + live log
 - Checkbox for automatic daily execution at 12:00 GMT (keep the window open or minimized)
 
@@ -186,29 +206,30 @@ python windows\duga_gui.py
 python windows\duga_gui.py --minimized
 ```
 
-### Building the EXE + Real Installer
+### Building for Installer (folder distribution, no standalone EXE)
 
 ```powershell
 python windows\build_exe.py
 ```
 
-Then create a proper installable program:
+This produces a distribution folder `dist\Duga\` (using PyInstaller's onedir mode) intended for packaging.
+
+Then create the proper Windows installer:
 
 1. Download **Inno Setup** (free): https://jrsoftware.org/isinfo.php
 2. Open `windows\DugaInstaller.iss`
-3. Compile → produces `dist\DugaSetup-0.1.0-Berkut.exe`
+3. Compile → produces `dist\DugaSetup-0.2.0-Berkut-B.exe`
 
-The installer adds Start Menu shortcuts, a startup entry (launches to tray), and a real uninstaller in "Apps & features".
+The installer:
+- Installs Duga as a proper application
+- Adds Start Menu shortcuts
+- Adds a startup entry (launches minimized to tray)
+- Registers a real uninstaller in "Apps & features"
+- Supports easy updates: just run the new installer while the old version is installed. It will automatically (and silently) remove the old version first, then install the new one over the same location. No need to manually uninstall.
 
 See `windows/README.md` for full details on tray, icon, and installer.
 
-Result: single-file `dist\Duga.exe`
-
 No extra UI libraries required (no customtkinter).
-
-You can place this EXE anywhere on your laptop. Just double-click it, configure everything, enable "Auto-run daily...", and leave the window open (or minimized).
-
-See `windows/README.md` for more details.
 
 ## Android App (APK)
 
@@ -216,7 +237,7 @@ There is a full GUI app in `mobile/duga_kivy_app.py` that lets you:
 
 - Edit `prompt.txt` in a nice text box
 - Manage keywords, websites, and social handles (X, Instagram, LinkedIn, Facebook, Threads) with add/remove
-- Enter and save your DeepSeek API key + Telegram bot details
+- Enter and save your LLM API key + Telegram bot details
 - Tap **Run Briefing Now** to execute the full pipeline from your phone
 
 ### Quick local test of the mobile GUI

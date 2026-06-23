@@ -5,9 +5,9 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
     # filevers and prodvers should be always a tuple with four items: (1, 2, 3, 4)
-    # Set to (0, 1, 0, 0) for 0.1.0
-    filevers=(0, 1, 0, 0),
-    prodvers=(0, 1, 0, 0),
+    # Set to (0, 2, 0, 0) for 0.2.0
+    filevers=(0, 2, 0, 0),
+    prodvers=(0, 2, 0, 0),
     # Contains a bitmask that specifies the valid bits 'flags'
     mask=0x3f,
     # Contains a bitmask that specifies the Boolean attributes of the file.
@@ -29,13 +29,13 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'Duga Project'),
-        StringStruct(u'FileDescription', u'Duga 0.1.0 "Berkut"'),
-        StringStruct(u'FileVersion', u'0.1.0'),
+        StringStruct(u'FileDescription', u'Duga 0.2.0 "Berkut-B"'),
+        StringStruct(u'FileVersion', u'0.2.0'),
         StringStruct(u'InternalName', u'Duga'),
         StringStruct(u'LegalCopyright', u'© 2026'),
         StringStruct(u'OriginalFilename', u'Duga.exe'),
         StringStruct(u'ProductName', u'Duga'),
-        StringStruct(u'ProductVersion', u'0.1.0 "Berkut"')])
+        StringStruct(u'ProductVersion', u'0.2.0 "Berkut-B"')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
   ]

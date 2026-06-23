@@ -110,7 +110,7 @@ def do_init(path: Path | None = None, overwrite: bool = False) -> int:
         copied = False
         try:
             from importlib.resources import as_file, files
-            pkg = files("radar")
+            pkg = files("duga")
             tmpl = pkg / "templates" / template_name
             if tmpl.is_file():
                 with as_file(tmpl) as src:
@@ -148,7 +148,7 @@ def do_init(path: Path | None = None, overwrite: bool = False) -> int:
     env_ex = target_dir / ".env.example"
     if not env_ex.exists() or overwrite:
         env_ex.write_text(
-            "# DeepSeek (required)\nDEEPSEEK_API_KEY=sk-...\n\n"
+            "# LLM API Key (e.g. DeepSeek)\nDEEPSEEK_API_KEY=sk-...\n\n"
             "# Telegram (required)\nTELEGRAM_BOT_TOKEN=...\nTELEGRAM_CHAT_ID=...\n",
             encoding="utf-8"
         )

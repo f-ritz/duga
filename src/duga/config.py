@@ -115,7 +115,7 @@ class Targets:
 def _copy_package_template(name: str, dest: Path) -> None:
     """Copy a template file that is shipped inside the duga package."""
     try:
-        pkg_files = files("radar")
+        pkg_files = files("duga")
         template = pkg_files / "templates" / name
         if template.is_file():
             with as_file(template) as src:

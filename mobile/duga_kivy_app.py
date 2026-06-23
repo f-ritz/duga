@@ -1,5 +1,5 @@
 """
-Duga Mobile - Android APK GUI (Kivy) - 0.1.0 "Berkut"
+Duga Mobile - Android APK GUI (Kivy) - 0.2.0 "Berkut-B"
 
 Features tabs for:
 - Prompt editor (writes prompt.txt)
@@ -148,7 +148,7 @@ class EditableList(BoxLayout):
 
 
 class DugaMobileApp(App):
-    title = "Duga 0.1.0 \"Berkut\""
+    title = "Duga 0.2.0 \"Berkut-B\""
 
     def build(self):
         self.data_dir = get_duga_data_dir()
@@ -217,7 +217,7 @@ class DugaMobileApp(App):
 
         self.key_inputs = {}
         for key, hint in [
-            ("DEEPSEEK_API_KEY", "DeepSeek API Key"),
+            ("DEEPSEEK_API_KEY", "LLM API Key"),
             ("TELEGRAM_BOT_TOKEN", "Telegram Bot Token"),
             ("TELEGRAM_CHAT_ID", "Your Telegram Chat/User ID"),
         ]:
