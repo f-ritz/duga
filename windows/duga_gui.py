@@ -247,6 +247,14 @@ class SystemTray:
             win32gui.Shell_NotifyIcon(win32gui.NIM_DELETE, self.notify_id)
             self.notify_id = None
 
+    def update_title(self, new_title: str):
+        self.title = new_title
+        if self.notify_id and HAS_TRAY:
+            hwnd = self._get_hwnd()
+            flags = win32gui.NIF_TIP
+            nid = (hwnd, 0, flags, 0, 0, self.title)
+            win32gui.Shell_NotifyIcon(win32gui.NIM_MODIFY, nid)
+
     def _wnd_proc(self, hwnd, msg, wparam, lparam):
         if lparam == win32con.WM_LBUTTONDBLCLK:
             self.app.show_window()
@@ -303,7 +311,10 @@ class DugaApp:
         # Tray setup
         if HAS_TRAY:
             icon_path = self._find_icon_path()
-            self.tray = SystemTray(self, icon_path, f"Duga {APP_VERSION}")
+            title = f"Duga {APP_VERSION}"
+            if self.auto_var.get():
+                title += " [Auto]"
+            self.tray = SystemTray(self, icon_path, title)
             # Start with tray icon visible
             self.tray.show_icon()
 
@@ -402,7 +413,7 @@ class DugaApp:
         self.auto_var = tk.BooleanVar(value=False)
         auto_cb = ttk.Checkbutton(
             status_bar,
-            text="Auto-run daily at 12:00 GMT (keep window open)",
+            text="Auto-run daily at 12:00 GMT (app must stay running - can be minimized to tray)",
             variable=self.auto_var,
             command=self._toggle_auto,
         )
@@ -523,13 +534,18 @@ class DugaApp:
 
     def _toggle_auto(self):
         self.auto_run_enabled = self.auto_var.get()
-        self.log("Auto-run " + ("ENABLED" if self.auto_run_enabled else "DISABLED") + ".")
+        status = "ENABLED" if self.auto_run_enabled else "DISABLED"
+        self.log(f"Auto-run daily at 12:00 GMT {status} (runs even when minimized to tray).")
+        if self.tray:
+            base = f"Duga {APP_VERSION}"
+            extra = " [Auto]" if self.auto_run_enabled else ""
+            self.tray.update_title(base + extra)
 
     def minimize_to_tray(self):
         self.root.withdraw()
         if self.tray:
             self.tray.show_icon()
-        self.log("Minimized to tray.")
+        self.log("Minimized to tray. Auto-run continues if enabled.")
 
     def show_window(self):
         self.root.deiconify()

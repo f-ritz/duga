@@ -197,7 +197,7 @@ Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your 
 - Edit prompt, keywords, websites (as URLs), and all social platforms (handles/usernames). Instagram handles are scanned via Apify for richer data passed to the LLM.
 - Configure and save your API keys locally (LLM, Telegram bot, Apify, optional Brave/Tavily/Vision)
 - Manual run + live log
-- Checkbox for automatic daily execution at 12:00 GMT (keep the window open or minimized)
+- Checkbox for automatic daily execution at 12:00 GMT (app must stay running; can be minimized to tray)
 
 ### Quick start from source
 
