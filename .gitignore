@@ -33,6 +33,17 @@ build/
 dist/
 *.egg-info/
 *.egg
+*.whl
+
+# Radar user data (examples only in repo)
+briefings/
+logs/
+.env
+*.log
+
+# Common
+__pycache__/
+*.py[cod]
 
 # Playwright / browsers if used later
 playwright/.cache/

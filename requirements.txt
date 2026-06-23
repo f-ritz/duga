@@ -1,24 +1,23 @@
-# Core
+# Core dependencies (match pyproject.toml)
 python-dotenv>=1.0.1
 requests>=2.32.0
 openai>=1.35.0
-
-# Web + scraping
 beautifulsoup4>=4.12.3
 lxml>=5.2.0
 trafilatura>=1.12.0
 duckduckgo-search>=6.3.0
-# The package is being renamed; install the new name too for future compatibility
-ddgs>=0.1.0
-
-# Optional but recommended for X scraping
-# twscrape>=0.9.0
-
-# For images / vision (base64 + download)
 Pillow>=10.4.0
+platformdirs>=4.2.0
 
-# Scheduling (only if you use --schedule mode)
-# apscheduler>=3.10.4
+# Optional
+# apscheduler>=3.10.4     # for --schedule mode
+# twscrape>=0.9.0         # better X scraping
+# ddgs                      # newer duckduckgo search package name
 
-# Dev / future
-# playwright>=1.44.0   # for advanced JS-heavy scraping
+# For Android mobile GUI (Kivy)
+# kivy>=2.3.0
+# kivymd>=1.1.1   # for nicer Material Design look (recommended)
+
+# For Windows desktop GUI + EXE
+# Uses only the built-in tkinter + ttk (no extra UI libraries)
+# apscheduler>=3.10.4   # optional, for more advanced scheduling inside GUI

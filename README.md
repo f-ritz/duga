@@ -1,239 +1,252 @@
 # radar
 
-AI-powered daily personal briefing agent.
+**Fully local personal daily briefing agent.**
 
-Runs once per day (target 12:00 GMT) and delivers a customized summary of developments related to your tracked keywords, social accounts, and websites — straight to Telegram.
+radar gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek by default), and sends you a concise briefing via Telegram.
 
-## Features (planned / current)
+- Everything runs **on your own computer**.
+- Your `targets.json`, `prompt.txt`, briefings, and data stay **private** — the author of this project never sees anything.
+- Designed to be easy for anyone to install and run for themselves.
 
-- Config-driven via `targets.json` (keywords, per-platform social handles, full websites)
-- Style control via `prompt.txt`
-- Web keyword search (DuckDuckGo for zero-config start; easily swapped)
-- Full website scraping with clean text extraction
-- Social profile + recent public post scraping (X/Twitter supported via optional scraper; others via general search)
-- Optional image analysis (vision) on posted media
-- LLM summarization using DeepSeek-V4-Flash (or Pro) via OpenAI-compatible API
-- Maintains last 14 days of briefings for continuity / "what's new"
-- Sends result via Telegram
-- History stored locally as dated Markdown files
-- Safe daily guard (skips if briefing for today already exists)
-- Designed to run on a home Windows machine via Task Scheduler
+## Quick Start (for normal users)
 
-## High-level flow
+### 1. Install
 
-1. Load `targets.json` + `prompt.txt`
-2. Gather fresh data:
-   - Web search across keywords
-   - Scrape all listed websites
-   - Fetch public data + recent posts from social handles
-   - (Optional) analyze images from posts/pages
-3. Combine + recent briefings → prompt LLM with your custom style instructions
-4. LLM produces the briefing
-5. Send via Telegram DM
-6. Save copy in `briefings/YYYY-MM-DD.md`
+**Recommended (cleanest):**
 
-## Project structure
+```bash
+# Using pipx (isolated, great)
+pipx install git+https://github.com/yourname/radar.git
 
-```
-.
-├── README.md
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── targets.json          # ← Edit this
-├── prompt.txt            # ← Edit this (your style instructions)
-├── main.py               # Entry point: python main.py
-├── config.py
-├── gather.py
-├── llm.py
-├── telegram_bot.py
-├── history.py
-├── briefings/            # Auto-created, stores last briefings
-└── logs/                 # Auto-created
+# Or with regular pip (in a venv is fine)
+pip install git+https://github.com/yourname/radar.git
 ```
 
-## Setup
+After install you get the `radar` command.
 
-1. **Python 3.13+** (you have it).
+**Alternative (from source / developers):**
 
-2. Create venv and install deps:
-
-```powershell
+```bash
+git clone https://github.com/yourname/radar.git
+cd radar
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+source .venv/bin/activate   # or .\.venv\Scripts\Activate.ps1 on Windows
+pip install -e .
 ```
 
-3. Copy env and fill keys:
+### 2. Bootstrap your personal configuration
 
-```powershell
-copy .env.example .env
+```bash
+radar init
 ```
 
-Edit `.env`:
-
-```
-DEEPSEEK_API_KEY=sk-...
-TELEGRAM_BOT_TOKEN=123456:ABC-...
-TELEGRAM_CHAT_ID=123456789     # Your user/chat id to receive DMs
-
-# Optional (recommended for production quality)
-# BRAVE_API_KEY=...
-# TAVILY_API_KEY=...
-
-# Vision: if DeepSeek vision not available in your region/account, set a fallback or leave empty
-# VISION_MODEL=deepseek-v4-flash   # or openai/gpt-4o-mini etc. (requires different base if used)
-```
-
-4. Edit inputs (these are the **only** files you normally touch day-to-day):
+This creates your personal config directory (usually `~/.config/radar` on Linux/macOS or `%APPDATA%\radar` on Windows) containing:
 
 - `targets.json`
 - `prompt.txt`
+- `.env.example`
 
-See examples below.
+### 3. Add your API keys
 
-5. Test a dry run (no LLM call, no send):
+```bash
+# Go to your config directory (radar init tells you the path)
+cd "$(radar --help | grep -i config || echo "$HOME/.config/radar")"   # or manually
+cp .env.example .env
+```
+
+Edit `.env` and fill in at minimum:
+
+```env
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+```
+
+### 4. Customize what you care about
+
+Edit the two files created by `init`:
+
+- `targets.json` — keywords, X/Instagram/etc handles, websites
+- `prompt.txt` — tone, length, priorities ("concise", "very detailed", etc.)
+
+### 5. Test it
+
+```bash
+radar --dry-run
+```
+
+You will see what data it would collect and the prompt it would send to the LLM.
+
+When happy:
+
+```bash
+radar
+```
+
+This will generate a real briefing and send it via Telegram (and save a local copy).
+
+## Features
+
+- Config-driven via simple JSON + text files (`targets.json` + `prompt.txt`)
+- Web search + full website scraping + social profile scanning
+- Optional vision analysis on images
+- Uses DeepSeek-V4-Flash (fast & cheap) or swap models
+- Remembers the last 14 days of briefings for continuity
+- Sends via Telegram (easy to extend to Discord/email)
+- Safe: skips if today's briefing already exists
+- Cross platform (Windows, macOS, Linux)
+
+## Privacy
+
+**This tool is private by design.**
+
+- No telemetry
+- No accounts
+- No data is sent to the author or any central server
+- The *only* external calls are the ones you configure:
+  - DeepSeek (or another LLM you point it at)
+  - Your Telegram bot (or whatever notifier you configure)
+
+You can audit the code. Fork it. Run it air-gapped if you want (except for the LLM call).
+
+## How to run it every day (12:00 GMT / UTC)
+
+### Windows (Task Scheduler) — Recommended for home machines
+
+See detailed instructions in the "Scheduling" section below, or use:
 
 ```powershell
-python main.py --dry-run
+schtasks /create /sc daily /st 12:00 /tn "RadarBriefing" /tr "radar" /ru %USERNAME%
 ```
 
-6. Do a real run (will use API credits and send):
+### macOS / Linux (cron or launchd)
+
+Add to your crontab (`crontab -e`):
+
+```cron
+0 12 * * * /path/to/radar >> /path/to/radar-logs/cron.log 2>&1
+```
+
+(Adjust the path. Use `which radar` after installation.)
+
+You can also use `radar --schedule` (requires `apscheduler`) if you prefer a long-running process.
+
+## How it works
+
+1. Load `targets.json` + `prompt.txt`
+2. Gather fresh data from web, websites, and public social profiles
+3. Send collected data + last 14 briefings + your style instructions to the LLM
+4. Receive the briefing and deliver it via Telegram (also saved locally)
+
+Everything runs on **your** machine.
+
+## Command line
+
+```bash
+radar                 # generate + send now
+radar --dry-run
+radar init
+radar --config-dir ~/my-other-profile --dry-run
+```
+
+## Getting API Keys
+
+- DeepSeek: https://platform.deepseek.com (recommended model: `deepseek-v4-flash`)
+- Telegram bot + chat ID: @BotFather on Telegram
+
+## Privacy
+
+**Zero telemetry. Zero phoning home.**  
+The only network calls are to the LLM provider and notification service *you* configure. Your configs and history live only on your disk.
+
+## Development
+
+```bash
+pip install -e ".[full]"
+radar init
+```
+
+See `pyproject.toml` (uses src layout + console script).
+
+## Windows Desktop GUI (EXE)
+
+Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your PFR Reactor Sizer project — Segoe UI, LabelFrames, Notebook tabs, clean native widgets).
+
+- Tabs: Prompt, Targets, API Keys & Telegram, Run & Schedule
+- Edit prompt, keywords, websites, and all social platforms (x / instagram / linkedin / facebook / threads)
+- Configure and save your API keys locally
+- Manual run + live log
+- Checkbox for automatic daily execution at 12:00 GMT (keep the window open or minimized)
+
+### Quick start from source
 
 ```powershell
-python main.py
+python windows\radar_gui.py
+python windows\radar_gui.py --minimized
 ```
 
-## Daily automation on Windows (12:00 GMT)
-
-### Recommended: Windows Task Scheduler
-
-1. Open Task Scheduler → Create Basic Task
-2. Name: "Radar Daily Briefing"
-3. Trigger: Daily, start at 12:00:00 (make sure time zone is set so it's GMT/UTC equivalent)
-4. Action: Start a program
-   - Program: `C:\Users\Fritz\Desktop\code-projects\radar\.venv\Scripts\python.exe`
-   - Arguments: `C:\Users\Fritz\Desktop\code-projects\radar\main.py`
-   - Start in: `C:\Users\Fritz\Desktop\code-projects\radar`
-5. Finish. Then edit the task → Triggers → Advanced → make sure it runs whether logged on or not + "Run with highest privileges" if needed for network.
-6. Test by right-click → Run now.
-
-**Note on time zone:** 12:00 GMT means 12:00 UTC. On your machine, set the trigger time to whatever corresponds to 12:00 UTC in your local time (Task Scheduler times are local by default).
-
-Quick one-liner to create the scheduled task (adjust path):
+### Building the EXE + Real Installer
 
 ```powershell
-schtasks /create /sc daily /st 12:00 /tn "RadarDailyBriefing" /tr "\"C:\Users\Fritz\Desktop\code-projects\radar\.venv\Scripts\python.exe\" \"C:\Users\Fritz\Desktop\code-projects\radar\main.py\"" /ru %USERNAME% /rl HIGHEST
+python windows\build_exe.py
 ```
 
-Then test with: `schtasks /run /tn "RadarDailyBriefing"`
+Then create a proper installable program:
 
-Alternative (always-on console):
+1. Download **Inno Setup** (free): https://jrsoftware.org/isinfo.php
+2. Open `windows\RadarInstaller.iss`
+3. Compile → produces `dist\RadarSetup.exe`
 
-```powershell
-# Run this in a terminal that you leave open / minimized
-python main.py --schedule
+The installer adds Start Menu shortcuts, a startup entry (launches to tray), and a real uninstaller in "Apps & features".
+
+See `windows/README.md` for full details on tray, icon, and installer.
+
+Result: single-file `dist\RadarBriefing.exe`
+
+No extra UI libraries required (no customtkinter).
+
+You can place this EXE anywhere on your laptop. Just double-click it, configure everything, enable "Auto-run daily...", and leave the window open (or minimized).
+
+See `windows/README.md` for more details.
+
+## Android App (APK)
+
+There is a full GUI app in `mobile/radar_kivy_app.py` that lets you:
+
+- Edit `prompt.txt` in a nice text box
+- Manage keywords, websites, and social handles (X, Instagram, LinkedIn, Facebook, Threads) with add/remove
+- Enter and save your DeepSeek API key + Telegram bot details
+- Tap **Run Briefing Now** to execute the full pipeline from your phone
+
+### Quick local test of the mobile GUI
+
+```bash
+pip install kivy
+python mobile/radar_kivy_app.py
 ```
 
-(Requires `apscheduler` — add to requirements if you want this mode.)
+### Building the APK
 
-## Input file formats (expandable)
+1. Install buildozer (best on Linux or WSL):
+   ```bash
+   pip install buildozer
+   sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+   ```
 
-### targets.json
+2. Go to the mobile folder and build:
+   ```bash
+   cd mobile
+   buildozer android debug
+   ```
 
-```json
-{
-  "keywords": [
-    "xAI Grok",
-    "DeepSeek V4",
-    "AI agents daily",
-    "radar personal assistant"
-  ],
-  "social": {
-    "x": ["xai", "elonmusk", "grok", "deepseek_ai"],
-    "instagram": [],
-    "other": []
-  },
-  "websites": [
-    "https://x.ai",
-    "https://blog.x.ai",
-    "https://api-docs.deepseek.com"
-  ]
-}
-```
+3. The APK will be in `mobile/bin/`. Install it on your Android device.
 
-- Add/remove freely.
-- Platforms under `social` are extensible (currently best support for `x`).
-- Websites: full pages will be fetched and main content extracted.
+**Limitations on Android**:
+- Background daily execution at exactly 12:00 GMT is restricted by Android (Doze, battery optimization).
+- The app works great for manual runs + config editing.
+- For reliable daily runs many users keep the Python version on a home computer or small server and use the phone app only for configuration.
+- Scraping some social platforms (especially Facebook, Instagram, LinkedIn) can be limited without login cookies.
 
-### prompt.txt
-
-This is injected as style/system guidance to the LLM.
-
-Example:
-
-```
-You are an expert, no-nonsense daily intelligence briefer.
-
-Tone: concise, neutral, slightly wry. Use short paragraphs. Bullet points preferred for developments.
-
-Priorities:
-- Actionable or high-signal developments only
-- Flag breaking news or major shifts
-- Note connections to previous days when relevant
-- Always cite sources inline (site or @handle)
-- Never speculate wildly
-
-Target length: 600-900 words unless truly quiet day.
-Ignore marketing fluff and low-quality noise.
-```
-
-## Adding more social platforms / search backends
-
-Current implementation uses:
-- DuckDuckGo for keyword search (free, no key)
-- Direct HTTP + trafilatura for websites
-- For X: basic public profile + recent via search (upgrade path via `twscrape` or official API)
-
-To upgrade later:
-- Add Brave/Tavily for higher quality search (edit `gather.py`)
-- Add `twscrape` for reliable X timeline scraping (see comments in code)
-- For Instagram etc.: consider Apify or browser automation (Playwright) + respect ToS
-
-**Legal/ToS note**: Only scrape public data. Respect robots.txt and rate limits. For production use, prefer official APIs where possible.
-
-## Briefings & history
-
-- Stored in `./briefings/`
-- Each file is a full copy of what was sent
-- When generating, the last 14 days are loaded and summarized/referenced in the prompt so the LLM can note "continuing story from yesterday" etc.
-
-## Logging
-
-Logs go to `./logs/radar_YYYY-MM-DD.log`
-
-## Future / roadmap ideas
-
-- Pluggable search providers (config driven)
-- Real vision pipeline for images + key video frames
-- Discord sender in addition to Telegram
-- Richer output (HTML email + Telegram)
-- Rate limit + backoff everywhere
-- Docker + systemd timer / Windows service packaging
-- Self-evaluation of briefing quality
-- Multi-user support
-
-## Getting keys
-
-- DeepSeek: https://platform.deepseek.com/api_keys → use `deepseek-v4-flash`
-- Telegram bot: talk to @BotFather → `/newbot`, then get chat id by messaging the bot and visiting `https://api.telegram.org/bot<TOKEN>/getUpdates`
-
-## Development notes
-
-- All times use UTC internally where relevant.
-- Keep individual modules small and replaceable.
-- Never commit `.env` or real keys.
-
-Run `python main.py --help` for current CLI options.
+The mobile app stores its own copy of `targets.json`, `prompt.txt` and `.env` in the app's private storage.
 
 Happy briefing!
