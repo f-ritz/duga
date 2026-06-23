@@ -1,8 +1,8 @@
-# radar
+# Duga
 
-**Fully local personal daily briefing agent.**
+**Duga 0.1.0 "Berkut" — Fully local personal daily briefing agent.**
 
-radar gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek by default), and sends you a concise briefing via Telegram.
+Duga gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek by default), and sends you a concise briefing via Telegram.
 
 - Everything runs **on your own computer**.
 - Your `targets.json`, `prompt.txt`, briefings, and data stay **private** — the author of this project never sees anything.
@@ -16,19 +16,19 @@ radar gathers information based on *your* keywords, social handles, and websites
 
 ```bash
 # Using pipx (isolated, great)
-pipx install git+https://github.com/yourname/radar.git
+pipx install git+https://github.com/yourname/duga.git
 
 # Or with regular pip (in a venv is fine)
-pip install git+https://github.com/yourname/radar.git
+pip install git+https://github.com/yourname/duga.git
 ```
 
-After install you get the `radar` command.
+After install you get the `duga` command.
 
 **Alternative (from source / developers):**
 
 ```bash
-git clone https://github.com/yourname/radar.git
-cd radar
+git clone https://github.com/yourname/duga.git
+cd duga
 python -m venv .venv
 source .venv/bin/activate   # or .\.venv\Scripts\Activate.ps1 on Windows
 pip install -e .
@@ -37,10 +37,10 @@ pip install -e .
 ### 2. Bootstrap your personal configuration
 
 ```bash
-radar init
+duga init
 ```
 
-This creates your personal config directory (usually `~/.config/radar` on Linux/macOS or `%APPDATA%\radar` on Windows) containing:
+This creates your personal config directory (usually `~/.config/duga` on Linux/macOS or `%APPDATA%\duga` on Windows) containing:
 
 - `targets.json`
 - `prompt.txt`
@@ -49,8 +49,8 @@ This creates your personal config directory (usually `~/.config/radar` on Linux/
 ### 3. Add your API keys
 
 ```bash
-# Go to your config directory (radar init tells you the path)
-cd "$(radar --help | grep -i config || echo "$HOME/.config/radar")"   # or manually
+# Go to your config directory (duga init tells you the path)
+cd "$(duga --help | grep -i config || echo "$HOME/.config/duga")"   # or manually
 cp .env.example .env
 ```
 
@@ -72,7 +72,7 @@ Edit the two files created by `init`:
 ### 5. Test it
 
 ```bash
-radar --dry-run
+duga --dry-run
 ```
 
 You will see what data it would collect and the prompt it would send to the LLM.
@@ -80,7 +80,7 @@ You will see what data it would collect and the prompt it would send to the LLM.
 When happy:
 
 ```bash
-radar
+duga
 ```
 
 This will generate a real briefing and send it via Telegram (and save a local copy).
@@ -116,7 +116,7 @@ You can audit the code. Fork it. Run it air-gapped if you want (except for the L
 See detailed instructions in the "Scheduling" section below, or use:
 
 ```powershell
-schtasks /create /sc daily /st 12:00 /tn "RadarBriefing" /tr "radar" /ru %USERNAME%
+schtasks /create /sc daily /st 12:00 /tn "DugaBriefing" /tr "duga" /ru %USERNAME%
 ```
 
 ### macOS / Linux (cron or launchd)
@@ -124,12 +124,12 @@ schtasks /create /sc daily /st 12:00 /tn "RadarBriefing" /tr "radar" /ru %USERNA
 Add to your crontab (`crontab -e`):
 
 ```cron
-0 12 * * * /path/to/radar >> /path/to/radar-logs/cron.log 2>&1
+0 12 * * * /path/to/duga >> /path/to/duga-logs/cron.log 2>&1
 ```
 
-(Adjust the path. Use `which radar` after installation.)
+(Adjust the path. Use `which duga` after installation.)
 
-You can also use `radar --schedule` (requires `apscheduler`) if you prefer a long-running process.
+You can also use `duga --schedule` (requires `apscheduler`) if you prefer a long-running process.
 
 ## How it works
 
@@ -143,10 +143,10 @@ Everything runs on **your** machine.
 ## Command line
 
 ```bash
-radar                 # generate + send now
-radar --dry-run
-radar init
-radar --config-dir ~/my-other-profile --dry-run
+duga                 # generate + send now
+duga --dry-run
+duga init
+duga --config-dir ~/my-other-profile --dry-run
 ```
 
 ## Getting API Keys
@@ -163,15 +163,16 @@ The only network calls are to the LLM provider and notification service *you* co
 
 ```bash
 pip install -e ".[full]"
-radar init
+duga init
 ```
 
 See `pyproject.toml` (uses src layout + console script).
 
-## Windows Desktop GUI (EXE)
+## Windows Desktop GUI (EXE) — 0.1.0 "Berkut"
 
 Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your PFR Reactor Sizer project — Segoe UI, LabelFrames, Notebook tabs, clean native widgets).
 
+- Version: 0.1.0 "Berkut"
 - Tabs: Prompt, Targets, API Keys & Telegram, Run & Schedule
 - Edit prompt, keywords, websites, and all social platforms (x / instagram / linkedin / facebook / threads)
 - Configure and save your API keys locally
@@ -181,8 +182,8 @@ Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your 
 ### Quick start from source
 
 ```powershell
-python windows\radar_gui.py
-python windows\radar_gui.py --minimized
+python windows\duga_gui.py
+python windows\duga_gui.py --minimized
 ```
 
 ### Building the EXE + Real Installer
@@ -194,14 +195,14 @@ python windows\build_exe.py
 Then create a proper installable program:
 
 1. Download **Inno Setup** (free): https://jrsoftware.org/isinfo.php
-2. Open `windows\RadarInstaller.iss`
-3. Compile → produces `dist\RadarSetup.exe`
+2. Open `windows\DugaInstaller.iss`
+3. Compile → produces `dist\DugaSetup-0.1.0-Berkut.exe`
 
 The installer adds Start Menu shortcuts, a startup entry (launches to tray), and a real uninstaller in "Apps & features".
 
 See `windows/README.md` for full details on tray, icon, and installer.
 
-Result: single-file `dist\RadarBriefing.exe`
+Result: single-file `dist\Duga.exe`
 
 No extra UI libraries required (no customtkinter).
 
@@ -211,7 +212,7 @@ See `windows/README.md` for more details.
 
 ## Android App (APK)
 
-There is a full GUI app in `mobile/radar_kivy_app.py` that lets you:
+There is a full GUI app in `mobile/duga_kivy_app.py` that lets you:
 
 - Edit `prompt.txt` in a nice text box
 - Manage keywords, websites, and social handles (X, Instagram, LinkedIn, Facebook, Threads) with add/remove
@@ -222,7 +223,7 @@ There is a full GUI app in `mobile/radar_kivy_app.py` that lets you:
 
 ```bash
 pip install kivy
-python mobile/radar_kivy_app.py
+python mobile/duga_kivy_app.py
 ```
 
 ### Building the APK
