@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -23,6 +24,12 @@ try:
     from ddgs import DDGS  # preferred new package name
 except ImportError:
     from duckduckgo_search import DDGS  # legacy fallback
+
+try:
+    from apify_client import ApifyClient
+    HAS_APIFY = True
+except ImportError:
+    HAS_APIFY = False
 
 from .config import get_env
 
@@ -46,11 +53,16 @@ class CollectedData:
     social: dict[str, list[dict[str, Any]]] = field(default_factory=dict)  # platform -> posts/profiles
     media_urls: list[str] = field(default_factory=list)               # images to consider for vision
     errors: list[str] = field(default_factory=list)
+    fetched_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 def _safe_get(url: str, **kwargs) -> requests.Response | None:
     try:
-        resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=REQUEST_TIMEOUT, **kwargs)
+        headers = DEFAULT_HEADERS.copy()
+        headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        headers["Pragma"] = "no-cache"
+        headers["Expires"] = "0"
+        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, **kwargs)
         resp.raise_for_status()
         return resp
     except Exception as e:
@@ -95,7 +107,18 @@ def fetch_and_extract(url: str) -> dict[str, Any] | None:
         return None
 
     # Trafilatura is excellent for article/main-content extraction
-    text = trafilatura.extract(resp.text, include_comments=False, include_tables=False)
+    # Provide a config explicitly to avoid missing settings.cfg in bundled envs
+    try:
+        config = trafilatura.settings.use_config()
+        # ensure the required option exists (in case config load was partial)
+        if not config.has_option("DEFAULT", "min_extracted_size"):
+            config.set("DEFAULT", "min_extracted_size", "250")
+            config.set("DEFAULT", "min_extracted_comm_size", "1")
+            config.set("DEFAULT", "min_output_size", "1")
+            config.set("DEFAULT", "min_output_comm_size", "1")
+        text = trafilatura.extract(resp.text, include_comments=False, include_tables=False, config=config)
+    except Exception:
+        text = None
     if not text or len(text) < 80:
         # Fallback to basic BS4
         soup = BeautifulSoup(resp.text, "lxml")
@@ -114,6 +137,7 @@ def fetch_and_extract(url: str) -> dict[str, Any] | None:
         "url": url,
         "title": title or urlparse(url).netloc,
         "text": (text or "")[:12000],  # cap per page to control tokens
+        "fetched": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -178,13 +202,72 @@ def _scrape_x_profile_basic(handle: str) -> dict[str, Any]:
     return profile
 
 
+def _scrape_instagram_via_apify(handles: list[str], token: str) -> list[dict[str, Any]]:
+    """Scrape Instagram profiles using Apify instagram-scraper actor if token available."""
+    if not HAS_APIFY or not token or not handles:
+        return []
+    try:
+        client = ApifyClient(token)
+        run_input = {
+            "usernames": [h.strip() for h in handles if h.strip()],
+            "resultsLimit": 10,  # recent posts per profile
+            "searchType": "user",
+            "searchLimit": 1,
+            "skipPinnedPosts": False,
+            "includeProfileInfo": True,  # try to get more profile details
+        }
+        run = client.actor("apify/instagram-scraper").call(run_input=run_input)
+        items = client.dataset(run["defaultDatasetId"]).list_items().items or []
+        by_user: dict[str, dict] = {}
+        for item in items:
+            username = (item.get("ownerUsername") or item.get("username") or "").strip()
+            if not username:
+                continue
+            if username not in by_user:
+                by_user[username] = {
+                    "handle": username,
+                    "platform": "instagram",
+                    "fullName": item.get("ownerFullName") or item.get("fullName"),
+                    "bio": (item.get("biography") or item.get("ownerFullName") or item.get("description") or "")[:500],
+                    "followers": item.get("followersCount") or item.get("ownerFollowersCount") or item.get("profile", {}).get("followersCount") if isinstance(item.get("profile"), dict) else None,
+                    "following": item.get("followingCount") or item.get("ownerFollowingCount"),
+                    "verified": item.get("ownerIsVerified") or item.get("isVerified") or item.get("verified"),
+                    "posts": [],
+                }
+            post_text = (item.get("caption") or "")[:500]
+            if item.get("title"):
+                post_text = item["title"] + ": " + post_text
+            by_user[username]["posts"].append({
+                "text": post_text,
+                "likes": item.get("likesCount"),
+                "comments": item.get("commentsCount"),
+                "views": item.get("videoViewCount") or item.get("viewCount"),
+                "date": str(item.get("timestamp") or item.get("date") or ""),
+                "url": item.get("url") or f"https://instagram.com/{username}/",
+                "hashtags": item.get("hashtags", []),
+                "mentions": item.get("mentions", []),
+                "location": item.get("locationName"),
+                "isAd": item.get("isSponsored") or item.get("sponsored"),
+            })
+        # Return in order of input handles
+        result = []
+        for h in handles:
+            h = h.strip()
+            if h in by_user:
+                result.append(by_user[h])
+        return result
+    except Exception as e:
+        print(f"[gather] Apify Instagram error for {handles}: {e}")
+        return []
+
+
 def scrape_social(social: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
     """Scrape configured social platforms.
 
-    Strongest support: "x" (Twitter).
-    linkedin, facebook, threads, instagram and others fall back to web search
-    (site: specific queries where possible). Public data only; many platforms
-    require login for full access.
+    Strongest support: "x" (Twitter) and Instagram via Apify (if APIFY_API_KEY present).
+    For Instagram: use apify/instagram-scraper actor to get profile + recent posts.
+    Other platforms fall back to web search (site: specific queries).
+    Public data only.
     """
     out: dict[str, list[dict[str, Any]]] = {}
     platform_site_hints = {
@@ -194,17 +277,25 @@ def scrape_social(social: dict[str, list[str]]) -> dict[str, list[dict[str, Any]
         "instagram": "site:instagram.com",
     }
 
+    apify_token = get_env("APIFY_API_KEY")
+
     for platform, handles in social.items():
         out[platform] = []
-        for h in handles:
-            if not h:
-                continue
-            if platform.lower() in ("x", "twitter"):
+        clean_handles = [h.strip() for h in handles if h and h.strip()]
+        if not clean_handles:
+            continue
+        if platform.lower() == "instagram" and apify_token and HAS_APIFY:
+            ig_data = _scrape_instagram_via_apify(clean_handles, apify_token)
+            out[platform].extend(ig_data)
+            time.sleep(0.5)
+        elif platform.lower() in ("x", "twitter"):
+            for h in clean_handles:
                 prof = _scrape_x_profile_basic(h)
                 out[platform].append(prof)
                 time.sleep(0.6)
-            else:
-                # Generic + site-restricted search for better relevance
+        else:
+            # Generic + site-restricted search for better relevance
+            for h in clean_handles:
                 try:
                     hint = platform_site_hints.get(platform.lower(), "")
                     query = f"{h} {hint}" if hint else f"{platform} {h}"
@@ -261,6 +352,9 @@ def format_for_llm(data: CollectedData, max_chars_per_section: int = 3500) -> st
     """Turn collected data into a compact text block suitable for the LLM prompt."""
     lines: list[str] = []
 
+    lines.append(f"DATA FETCHED AT: {data.fetched_at} (all content below is live as of this time)")
+    lines.append("")
+
     if data.keywords:
         lines.append("TRACKED KEYWORDS: " + ", ".join(data.keywords))
         lines.append("")
@@ -280,6 +374,8 @@ def format_for_llm(data: CollectedData, max_chars_per_section: int = 3500) -> st
         for w in data.websites:
             lines.append(f"### {w.get('title') or w.get('url')}")
             lines.append(f"URL: {w.get('url')}")
+            if w.get("fetched"):
+                lines.append(f"Fetched: {w['fetched']}")
             text = (w.get("text") or "")[:max_chars_per_section]
             lines.append(text)
             lines.append("")
@@ -298,6 +394,32 @@ def format_for_llm(data: CollectedData, max_chars_per_section: int = 3500) -> st
                         txt = p.get("text") or p.get("body") or ""
                         if txt:
                             lines.append(f"  • {txt[:280]}")
+                elif platform == "instagram":
+                    lines.append(f"@{item.get('handle')}")
+                    if item.get("fullName"):
+                        lines.append(f"Full name: {item.get('fullName')}")
+                    if item.get("bio"):
+                        lines.append(f"Bio: {item['bio'][:300]}")
+                    if item.get("followers"):
+                        lines.append(f"Followers: {item.get('followers')} Following: {item.get('following', '?')} Verified: {item.get('verified', False)}")
+                    for p in item.get("posts", [])[:6]:
+                        txt = p.get("text") or ""
+                        extra = []
+                        if p.get("likes") is not None: extra.append(f"likes:{p['likes']}")
+                        if p.get("comments") is not None: extra.append(f"comments:{p['comments']}")
+                        if p.get("views") is not None: extra.append(f"views:{p['views']}")
+                        if p.get("hashtags"): extra.append(f"hashtags:{p['hashtags'][:3]}")
+                        if p.get("mentions"): extra.append(f"mentions:{p['mentions'][:3]}")
+                        if p.get("date"): extra.append(f"date:{p['date'][:10]}")
+                        if p.get("location"): extra.append(f"loc:{p['location']}")
+                        if p.get("isAd"): extra.append("sponsored")
+                        suffix = " (" + " ".join(extra) + ")" if extra else ""
+                        if txt:
+                            lines.append(f"  • {txt[:280]}{suffix}")
+                        elif extra:
+                            lines.append(f"  • (post without caption){suffix}")
+                        if p.get("url"):
+                            lines.append(f"    url: {p['url']}")
                 else:
                     for entry in items[:5]:
                         lines.append(f"  {entry}")

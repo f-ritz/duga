@@ -79,6 +79,36 @@ def get_config_dir() -> Path:
             user_dir = home / ".config" / "duga"
 
     user_dir.mkdir(parents=True, exist_ok=True)
+
+    # Migrate from old "radar" config dir if present (for version updates / rebrand)
+    old_radar = None
+    if platformdirs is not None:
+        old_radar = Path(platformdirs.user_config_dir("radar", appauthor=False))
+    else:
+        home = Path.home()
+        if os.name == "nt":
+            old_radar = home / "AppData" / "Roaming" / "radar"
+        else:
+            old_radar = home / ".config" / "radar"
+    if old_radar and old_radar.exists() and old_radar != user_dir:
+        try:
+            for f in ["targets.json", "prompt.txt", ".env"]:
+                src = old_radar / f
+                dst = user_dir / f
+                if src.exists() and not dst.exists():
+                    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            # briefings and logs too if desired
+            for sub in ["briefings", "logs"]:
+                old_sub = old_radar / sub
+                if old_sub.exists():
+                    new_sub = user_dir / sub
+                    new_sub.mkdir(exist_ok=True)
+                    for f in old_sub.iterdir():
+                        if f.is_file() and not (new_sub / f.name).exists():
+                            (new_sub / f.name).write_bytes(f.read_bytes())
+        except Exception:
+            pass  # best effort
+
     return user_dir
 
 

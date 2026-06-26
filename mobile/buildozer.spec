@@ -5,7 +5,7 @@ package.domain = com.yourname.duga
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json,txt,env
 
-version = 0.2.0
+version = 1.0.0
 requirements = python3,kivy,requests,openai,beautifulsoup4,lxml,trafilatura,duckduckgo-search,platformdirs,python-dotenv,Pillow
 
 # Include our duga core

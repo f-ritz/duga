@@ -1,10 +1,10 @@
-# Duga Windows GUI + Installer (EXE) — 0.2.0 "Berkut-B"
+# Duga Windows GUI + Installer (EXE) — 1.0.0 "Berkut-M"
 
-**Duga 0.2.0 "Berkut-B"**
+**Duga 1.0.0 "Berkut-M"**
 
 Pure `tkinter` + `ttk` GUI matching your PFR Reactor Sizer style.
 
-Version codename: Berkut-B
+Version codename: Berkut-M
 
 ## New Features (this update)
 - Proper application icon (`icon.ico`)
@@ -35,7 +35,7 @@ This produces a folder distribution at `dist\Duga\` (PyInstaller onedir mode) in
 1. Download & install **Inno Setup** (free): https://jrsoftware.org/isinfo.php
 2. Open `windows\DugaInstaller.iss`
 3. Press **Compile** (or F9)
-4. The installer `DugaSetup-0.2.0-Berkut-B.exe` will be created in `dist\`
+4. The installer `DugaSetup-1.0.0-Berkut-M.exe` will be created in `dist\`
 
 The installer will:
 - Install to `%LocalAppData%\Duga`

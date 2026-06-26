@@ -1,12 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
+
+datas = [('C:\\Users\\Fritz\\Desktop\\code-projects\\radar\\icon.ico', '.')]
+datas += collect_data_files('trafilatura')
+datas += collect_data_files('apify_client')
 
 
 a = Analysis(
     ['C:\\Users\\Fritz\\Desktop\\code-projects\\radar\\windows\\duga_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\Fritz\\Desktop\\code-projects\\radar\\icon.ico', '.')],
-    hiddenimports=['tkinter', 'tkinter.ttk', 'win32gui', 'win32con', 'win32api', 'duga', 'duga.config', 'duga.main', 'duga.gather', 'duga.llm', 'duga.history', 'duga.telegram_bot'],
+    datas=datas,
+    hiddenimports=['tkinter', 'tkinter.ttk', 'win32gui', 'win32con', 'win32api', 'duga', 'duga.config', 'duga.main', 'duga.gather', 'duga.llm', 'duga.history', 'duga.telegram_bot', 'apify_client', 'apify_client.client'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

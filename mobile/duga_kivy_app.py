@@ -1,5 +1,5 @@
 """
-Duga Mobile - Android APK GUI (Kivy) - 0.2.0 "Berkut-B"
+Duga Mobile - Android APK GUI (Kivy) - 1.0.0 "Berkut-M"
 
 Features tabs for:
 - Prompt editor (writes prompt.txt)
@@ -148,7 +148,7 @@ class EditableList(BoxLayout):
 
 
 class DugaMobileApp(App):
-    title = "Duga 0.2.0 \"Berkut-B\""
+    title = "Duga 1.0.0 \"Berkut-M\""
 
     def build(self):
         self.data_dir = get_duga_data_dir()

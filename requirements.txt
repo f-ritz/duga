@@ -21,3 +21,6 @@ platformdirs>=4.2.0
 # For Windows desktop GUI + EXE
 # Uses only the built-in tkinter + ttk (no extra UI libraries)
 # apscheduler>=3.10.4   # optional, for more advanced scheduling inside GUI
+
+# For Apify Instagram scraping
+apify-client>=1.8.0

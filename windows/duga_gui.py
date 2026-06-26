@@ -1,7 +1,7 @@
 """
 Duga Windows GUI - Desktop EXE version (pure tkinter + ttk)
 
-Duga 0.2.0 "Berkut-B"
+Duga 1.0.0 "Berkut-M"
 
 Matches the clean native Windows style from the PFR Reactor Sizer project
 (Segoe UI, ttk widgets, LabelFrames, Notebook tabs).
@@ -14,7 +14,7 @@ Features added:
 - --minimized command line support (for startup)
 - Designed to run in background like a normal app
 
-Version: 0.2.0 "Berkut-B"
+Version: 0.2.3 "Berkut-V"
 
 Requirements for tray:
     pip install pywin32   # only needed for development / full tray
@@ -78,7 +78,7 @@ try:
     APP_VERSION = DISPLAY_VERSION
 except Exception:
     HAS_RADAR_CORE = False
-    APP_VERSION = '0.2.0 "Berkut-B"'
+    APP_VERSION = '1.0.0 "Berkut-M"'
 
 
 def get_data_dir() -> Path:
@@ -214,6 +214,7 @@ class SystemTray:
         self.title = title
         self.hwnd = None
         self.notify_id = None
+        self.old_wnd_proc = None
 
     def _get_hwnd(self):
         # Use Tk's window as message window
@@ -238,14 +239,22 @@ class SystemTray:
         else:
             win32gui.Shell_NotifyIcon(win32gui.NIM_MODIFY, nid)
 
-        # Register for left/right click
-        win32gui.SetWindowLong(hwnd, win32con.GWL_WNDPROC, self._wnd_proc)
+        # Register for left/right click - save old proc so we can chain
+        if self.old_wnd_proc is None:
+            self.old_wnd_proc = win32gui.SetWindowLong(hwnd, win32con.GWL_WNDPROC, self._wnd_proc)
 
     def remove_icon(self):
+        hwnd = self._get_hwnd()
         if self.notify_id and HAS_TRAY:
-            hwnd = self._get_hwnd()
             win32gui.Shell_NotifyIcon(win32gui.NIM_DELETE, self.notify_id)
             self.notify_id = None
+        # Restore original wndproc so normal Tk input works when window is shown
+        if self.old_wnd_proc:
+            try:
+                win32gui.SetWindowLong(hwnd, win32con.GWL_WNDPROC, self.old_wnd_proc)
+            except Exception:
+                pass
+            self.old_wnd_proc = None
 
     def update_title(self, new_title: str):
         self.title = new_title
@@ -258,9 +267,15 @@ class SystemTray:
     def _wnd_proc(self, hwnd, msg, wparam, lparam):
         if lparam == win32con.WM_LBUTTONDBLCLK:
             self.app.show_window()
+            return 0
         elif lparam == win32con.WM_RBUTTONUP:
             self._show_menu(hwnd)
-        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
+            return 0
+        # Pass other messages (keyboard, mouse, focus, etc.) to the original Tk proc
+        if self.old_wnd_proc:
+            return win32gui.CallWindowProc(self.old_wnd_proc, hwnd, msg, wparam, lparam)
+        else:
+            return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
     def _show_menu(self, hwnd):
         menu = win32gui.CreatePopupMenu()
@@ -306,17 +321,17 @@ class DugaApp:
         self._build_ui()
 
         # Set icon again after UI is built (helps on some Tk + Windows combos for taskbar)
-        self.after(10, self._set_window_icon)
+        self.root.after(10, self._set_window_icon)
 
-        # Tray setup
+        # Tray setup - only show icon when actually minimizing to tray (to avoid hooking wndproc while window is open, which breaks text input)
         if HAS_TRAY:
             icon_path = self._find_icon_path()
             title = f"Duga {APP_VERSION}"
             if self.auto_var.get():
                 title += " [Auto]"
             self.tray = SystemTray(self, icon_path, title)
-            # Start with tray icon visible
-            self.tray.show_icon()
+            # Do NOT call show_icon() here for normal startup.
+            # Tray icon + wndproc hook only on minimize, so text input works in visible window.
 
         # Close button → minimize to tray
         self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
@@ -328,6 +343,13 @@ class DugaApp:
         # Scheduler thread
         self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
         self.scheduler_thread.start()
+
+        # Ensure window has focus so text entry works immediately
+        self.root.focus_force()
+        self.root.lift()
+
+        # Give focus to the first editable area (prompt)
+        self.root.after(100, lambda: self.prompt_text_widget.focus_set() if hasattr(self, 'prompt_text_widget') else None)
 
     def _find_icon_path(self) -> Optional[str]:
         """Find icon.ico (or radar.ico) in dev or frozen locations."""

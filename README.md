@@ -1,16 +1,17 @@
 # Duga
 
-**Duga 0.2.0 "Berkut-B" — Fully local personal daily briefing agent.**
+**Duga 1.0.0 "Berkut-M" — Fully local personal daily briefing agent.**
 
-Duga gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek by default), and sends you a concise briefing via Telegram.
+Duga gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek / any OpenAI-compatible by default), and sends you a concise briefing via Telegram.
 
 - Everything runs **on your own computer**.
 - Your `targets.json`, `prompt.txt`, briefings, and data stay **private** — the author of this project never sees anything.
 - Designed to be easy for anyone to install and run for themselves.
+- Proper Windows installer with easy in-place updates, system tray, and background auto-run.
 
 ## Quick Start (for normal users)
 
-### 1. Install
+### 1. Install (CLI)
 
 **Recommended (cleanest):**
 
@@ -46,7 +47,9 @@ This creates your personal config directory (usually `~/.config/duga` on Linux/m
 - `prompt.txt`
 - `.env.example`
 
-### 3. Add your API keys
+User data (keys, targets, prompts, briefings) lives in a persistent user directory and is preserved across version updates via automatic migration.
+
+### 3. Add your API keys (see detailed setup below)
 
 ```bash
 # Go to your config directory (duga init tells you the path)
@@ -57,16 +60,17 @@ cp .env.example .env
 Edit `.env` and fill in at minimum:
 
 ```env
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_API_KEY=your_llm_api_key_here
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+APIFY_API_KEY=your_apify_token_here   # for Instagram
 ```
 
 ### 4. Customize what you care about
 
 Edit the two files created by `init`:
 
-- `targets.json` — keywords, X/Instagram/etc handles, websites
+- `targets.json` — keywords, X/Instagram/etc handles (usernames), websites (full URLs). Instagram handles are scanned via Apify for rich profile + post data.
 - `prompt.txt` — tone, length, priorities ("concise", "very detailed", etc.)
 
 ### 5. Test it
@@ -75,7 +79,7 @@ Edit the two files created by `init`:
 duga --dry-run
 ```
 
-You will see what data it would collect and the prompt it would send to the LLM.
+You will see what data it would collect (fresh live content) and the prompt it would send to the LLM.
 
 When happy:
 
@@ -83,7 +87,49 @@ When happy:
 duga
 ```
 
-This will generate a real briefing and send it via Telegram (and save a local copy).
+This will generate a real briefing and send it via Telegram (and save a local copy with current fetch timestamps).
+
+## Detailed Setup Instructions
+
+### Telegram (required - use your own bot)
+
+1. In Telegram search for **@BotFather**, send `/newbot`, follow prompts. Copy the token.
+2. Paste into `TELEGRAM_BOT_TOKEN`.
+3. Message your new bot at least once.
+4. To get your Chat ID: message **@userinfobot** — it replies with the number. Paste into `TELEGRAM_CHAT_ID`.
+
+### Apify for Instagram (recommended for real data)
+
+1. Sign up at https://apify.com and get your API token.
+2. Paste into `APIFY_API_KEY`.
+3. In `targets.json` under `"instagram"` put usernames (handles only).
+4. The `apify/instagram-scraper` actor will fetch live profile info + recent posts/reels (bio, followers, captions, likes, comments, views, hashtags, mentions, locations, etc.).
+5. This rich data is formatted and fed into the LLM for the daily briefing (alongside web search, other social, and website content).
+
+### Other optional keys
+
+- `BRAVE_API_KEY` / `TAVILY_API_KEY` — better web search
+- Vision overrides (`VISION_*`) for image analysis
+
+All keys and configs are stored only locally.
+
+## Privacy
+
+**Zero telemetry. Zero phoning home.**  
+Only the connections you configure (LLM provider + Telegram + optionally Apify/Brave/etc.).
+
+## Development
+
+```bash
+pip install -e ".[full]"
+duga init
+```
+
+See `pyproject.toml`.
+
+---
+
+**Duga 1.0.0 "Berkut-M"** — ready for daily use. Run the installer, configure once, let it run (in tray or via scheduler). All your data survives updates. Fresh content every time.
 
 ## Features
 
@@ -152,7 +198,10 @@ duga --config-dir ~/my-other-profile --dry-run
 ## Getting API Keys
 
 - DeepSeek: https://platform.deepseek.com (recommended model: `deepseek-v4-flash`)
-- Apify (for Instagram scraping): https://apify.com (create account and get API token)
+- Apify (for Instagram scraping): https://apify.com (create account + get API token).  
+  The app is designed around the official actor **apify/instagram-scraper** (https://apify.com/apify/instagram-scraper).  
+  In `targets.json` you put usernames under the `"instagram"` key (e.g. `"instagram": ["cristiano", "nasa"]`).  
+  When you provide an `APIFY_API_KEY`, the gather step will run this actor to fetch real profile data + recent posts/reels instead of (or in addition to) weak web search results. The output gets passed to the LLM for the daily briefing.
 - Brave Search (optional): https://brave.com/search/api/
 - Tavily (optional): https://tavily.com
 - Vision override (optional, falls back to DeepSeek): any compatible OpenAI-style vision endpoint
@@ -188,13 +237,13 @@ duga init
 
 See `pyproject.toml` (uses src layout + console script).
 
-## Windows Desktop GUI (EXE) — 0.2.0 "Berkut-B"
+## Windows Desktop GUI (EXE) — 1.0.0 "Berkut-M"
 
 Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your PFR Reactor Sizer project — Segoe UI, LabelFrames, Notebook tabs, clean native widgets).
 
-- Version: 0.2.0 "Berkut-B"
+- Version: 1.0.0 "Berkut-M"
 - Tabs: Prompt, Targets, API Keys & Telegram, Run & Schedule
-- Edit prompt, keywords, websites (as URLs), and all social platforms (handles/usernames). Instagram handles are scanned via Apify for richer data passed to the LLM.
+- Edit prompt, keywords, websites (as URLs), and all social platforms (handles/usernames). For Instagram, you list usernames in targets.json → they get fed to the `apify/instagram-scraper` actor (if you provide an APIFY_API_KEY) so richer profile + post data is included for the LLM.
 - Configure and save your API keys locally (LLM, Telegram bot, Apify, optional Brave/Tavily/Vision)
 - Manual run + live log
 - Checkbox for automatic daily execution at 12:00 GMT (app must stay running; can be minimized to tray)
@@ -218,7 +267,7 @@ Then create the proper Windows installer:
 
 1. Download **Inno Setup** (free): https://jrsoftware.org/isinfo.php
 2. Open `windows\DugaInstaller.iss`
-3. Compile → produces `dist\DugaSetup-0.2.0-Berkut-B.exe`
+3. Compile → produces `dist\DugaSetup-1.0.0-Berkut-M.exe`
 
 The installer:
 - Installs Duga as a proper application

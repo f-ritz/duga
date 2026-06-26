@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "duga"
-version = "0.2.0"
-description = "Duga 0.2.0 \"Berkut-B\" - Fully local AI daily personal briefing agent. Web + social + websites → LLM (DeepSeek) → Telegram."
+version = "1.0.0"
+description = "Duga 1.0.0 \"Berkut-M\" - Fully local AI daily personal briefing agent. Web + social + websites → LLM (DeepSeek) → Telegram."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -35,6 +35,7 @@ dependencies = [
     "duckduckgo-search>=6.3.0",
     "Pillow>=10.4.0",
     "platformdirs>=4.2.0",
+    "apify-client>=1.8.0",
 ]
 
 [project.optional-dependencies]
