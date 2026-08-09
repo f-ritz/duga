@@ -315,7 +315,7 @@ pip install kivy
 python mobile/duga_kivy_app.py
 ```
 
-### Building the APK
+### Building the APK (defunct)
 
 1. Install buildozer (best on Linux or WSL):
    ```bash
