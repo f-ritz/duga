@@ -33,6 +33,8 @@ At a high level, every run does this:
 
 The CLI skips the run if today’s briefing already exists (use `--force` to override). The Windows GUI always forces a fresh run when you click **Run Briefing Now**.
 
+NOTE: All functionality aside from Windows is currently defunct. This will be re-implemented at a later date, pending testing.
+
 ---
 
 ## Features (1.1.1 'Berkut-AM')
@@ -398,7 +400,11 @@ cd mobile
 buildozer android debug
 ```
 
+<<<<<<< HEAD
 Limitations on Android: OS battery/Doze restrictions make exact daily background runs unreliable; social scrapes can be flaky without login cookies. Many users edit config on the phone and keep scheduled runs on a desktop/server.
+=======
+### Building the APK (defunct)
+>>>>>>> 68055b54e97705e111b7e22e2d1e1b6888d37c5b
 
 ---
 
