@@ -1,8 +1,8 @@
 ; Duga Installer (Inno Setup 6+)
-; Version 1.0.0 "Berkut-M"
+; Version 1.1.1 'Berkut-AM'
 ; 
 ; Build the app first with: python windows\build_exe.py
-; Then compile this .iss to produce DugaSetup-1.0.0-Berkut-M.exe
+; Then compile this .iss to produce DugaSetup-1.1.1-Berkut-AM.exe
 ; The installer packages the onedir distribution from dist\Duga\
 ;
 ; Update support:
@@ -13,8 +13,8 @@
 ;   - restartreplace flag (see [Files]) allows replacement of in-use files if needed
 
 #define MyAppName "Duga"
-#define MyAppVersion "1.0.0"
-#define MyAppVerName "Duga 1.0.0 'Berkut-M'"
+#define MyAppVersion "1.1.1"
+#define MyAppVerName "Duga 1.1.1 'Berkut-AM'"
 #define MyAppPublisher "Fritz Wolfram"
 #define MyAppExeName "Duga.exe"
 
@@ -30,7 +30,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
 OutputDir=..\dist
-OutputBaseFilename=DugaSetup-1.0.0-Berkut-M
+OutputBaseFilename=DugaSetup-1.1.1-Berkut-AM
 PrivilegesRequired=lowest
 CloseApplications=yes
 CloseApplicationsFilter=Duga.exe

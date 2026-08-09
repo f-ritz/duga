@@ -1,6 +1,6 @@
 # Duga Mobile (Android)
 
-This is a companion GUI app built with Kivy for Duga 1.0.0 "Berkut-M".
+This is a companion GUI app built with Kivy for Duga 1.1.1 'Berkut-AM'.
 
 It lets you comfortably manage everything from your phone:
 

@@ -1,7 +1,7 @@
 """
 Build the Duga Windows application for installer packaging (pure tkinter + ttk + tray).
 
-Version: 1.0.0 "Berkut-M"
+Version: 1.1.1 'Berkut-AM'
 
 This builds a folder-based distribution (not a single standalone EXE) suitable for
 the Inno Setup installer.
@@ -27,7 +27,7 @@ if ICON.exists():
     print(f"Found icon: {ICON}")
 VERSION_INFO = PROJECT_ROOT / "windows" / "version_info.txt"
 
-print('Building Duga 1.0.0 "Berkut-M" (onedir for installer)...')
+print('Building Duga 1.1.1 \'Berkut-AM\' (onedir for installer)...')
 
 # Ensure pywin32 is available for tray (harmless if already present)
 try:
@@ -61,7 +61,7 @@ cmd = [
 
 if VERSION_INFO.exists():
     cmd += ["--version-file", str(VERSION_INFO)]
-    print(f"Using version info: {VERSION_INFO} (1.0.0 Berkut-M)")
+    print(f"Using version info: {VERSION_INFO} (1.1.1 Berkut-AM)")
 else:
     print("No version_info.txt found.")
 
@@ -75,7 +75,7 @@ else:
 result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
 if result.returncode == 0:
-    print('\n✅ Build succeeded! 1.0.0 "Berkut-M"')
+    print('\n✅ Build succeeded! 1.1.1 \'Berkut-AM\'')
     dist_folder = DIST_DIR / "Duga"
     print(f"   Distribution folder: {dist_folder}")
     print("   This is for the installer (not a portable standalone EXE).")

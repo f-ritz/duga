@@ -1,6 +1,6 @@
 # Duga
 
-**Duga 1.0.0 "Berkut-M" — Fully local personal daily briefing agent.**
+**Duga 1.1.1 'Berkut-AM' — Fully local personal daily briefing agent.**
 
 Duga gathers information based on *your* keywords, social handles, and websites, summarizes the results with an LLM (DeepSeek / any OpenAI-compatible by default), and sends you a concise briefing via Telegram.
 
@@ -63,14 +63,14 @@ Edit `.env` and fill in at minimum:
 DEEPSEEK_API_KEY=your_llm_api_key_here
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TELEGRAM_CHAT_ID=your_telegram_chat_id_here
-APIFY_API_KEY=your_apify_token_here   # for Instagram
+# APIFY_API_KEY=...   # optional, currently not used for Instagram handles (now standard web scan)
 ```
 
 ### 4. Customize what you care about
 
 Edit the two files created by `init`:
 
-- `targets.json` — keywords, X/Instagram/etc handles (usernames), websites (full URLs). Instagram handles are scanned via Apify for rich profile + post data.
+- `targets.json` — keywords, X/Instagram/etc handles (usernames), websites (full URLs). Instagram handles are scanned via direct profile URL fetch (whole profile) + web search fallback, like other social platforms. Private accounts yield whatever public data is available.
 - `prompt.txt` — tone, length, priorities ("concise", "very detailed", etc.)
 
 ### 5. Test it
@@ -98,13 +98,15 @@ This will generate a real briefing and send it via Telegram (and save a local co
 3. Message your new bot at least once.
 4. To get your Chat ID: message **@userinfobot** — it replies with the number. Paste into `TELEGRAM_CHAT_ID`.
 
-### Apify for Instagram (recommended for real data)
+### Instagram handles (standard web scan, no Apify)
 
-1. Sign up at https://apify.com and get your API token.
-2. Paste into `APIFY_API_KEY`.
-3. In `targets.json` under `"instagram"` put usernames (handles only).
-4. The `apify/instagram-scraper` actor will fetch live profile info + recent posts/reels (bio, followers, captions, likes, comments, views, hashtags, mentions, locations, etc.).
-5. This rich data is formatted and fed into the LLM for the daily briefing (alongside web search, other social, and website content).
+Instagram usernames in `targets.json` are handled like other social platforms:
+- Direct profile page fetch ("scan the whole profile at once" via https://instagram.com/handle/)
+- Plus site-restricted web search fallback for posts/mentions.
+- Private accounts: you get whatever is publicly crawlable ("oh well").
+- No special Apify actor, no per-handle post limit, no private pre-skip.
+
+The `APIFY_API_KEY` field is still accepted but not used for Instagram profile/post data.
 
 ### Other optional keys
 
@@ -129,7 +131,7 @@ See `pyproject.toml`.
 
 ---
 
-**Duga 1.0.0 "Berkut-M"** — ready for daily use. Run the installer, configure once, let it run (in tray or via scheduler). All your data survives updates. Fresh content every time.
+**Duga 1.1.1 'Berkut-AM'** — ready for daily use. Run the installer, configure once, let it run (in tray or via scheduler). All your data survives updates. Fresh content every time. Multiple named instances supported.
 
 ## Features
 
@@ -141,6 +143,9 @@ See `pyproject.toml`.
 - Sends via Telegram (easy to extend to Discord/email)
 - Safe: skips if today's briefing already exists
 - Cross platform (Windows, macOS, Linux)
+- Adjustable daily run time (GMT/UTC)
+- Multiple named instances (own targets/prompt per instance, shared keys) with sequential auto-run queueing
+- GUI right-click Cut/Copy/Paste on prompt + direct+safe JSON editing for targets with reload/confirm
 
 ## Privacy
 
@@ -155,7 +160,9 @@ See `pyproject.toml`.
 
 You can audit the code. Fork it. Run it air-gapped if you want (except for the LLM call).
 
-## How to run it every day (12:00 GMT / UTC)
+## How to run it every day (configurable GMT time)
+
+The time is adjustable in the GUI (enter e.g. 09:30 or 14:00 in the Time (GMT) field and click Set). It always runs in GMT/UTC.
 
 ### Windows (Task Scheduler) — Recommended for home machines
 
@@ -164,6 +171,8 @@ See detailed instructions in the "Scheduling" section below, or use:
 ```powershell
 schtasks /create /sc daily /st 12:00 /tn "DugaBriefing" /tr "duga" /ru %USERNAME%
 ```
+
+(Adjust /st HH:MM for your preferred GMT time.)
 
 ### macOS / Linux (cron or launchd)
 
@@ -177,34 +186,40 @@ Add to your crontab (`crontab -e`):
 
 You can also use `duga --schedule` (requires `apscheduler`) if you prefer a long-running process.
 
+**GUI users**: the built-in scheduler (with Auto-run checkbox) supports the adjustable time + multiple instances. No need for external scheduler if using the Windows app.
+
 ## How it works
 
 1. Load `targets.json` + `prompt.txt`
 2. Gather fresh data from web, websites, and public social profiles
-3. Send collected data + last 14 briefings + your style instructions to the LLM
-4. Receive the briefing and deliver it via Telegram (also saved locally)
+3. (If many targets) Split into ~10-entry chunks (keywords + sites + handles). Gather + ask LLM per chunk.
+4. Synthesize the chunk briefings + recent history into one final daily briefing.
+5. Deliver via Telegram (also saved locally).
+
+**DeepSeek-V4-Flash note**: The model advertises a 1M-token context window (max output 384k). In practice, quality and retrieval precision are best below ~200-250k tokens. Duga therefore defaults to feeding data in small ~10-entry chunks and synthesizing — this keeps every LLM call small and high-quality regardless of how many targets you track.
 
 Everything runs on **your** machine.
 
 ## Command line
 
 ```bash
-duga                 # generate + send now
+duga                 # generate + send now (uses 10-entry chunking by default)
 duga --dry-run
+duga --chunk-size 0          # disable chunking (single big LLM call)
+duga --chunk-size 8          # use custom chunk size
 duga init
 duga --config-dir ~/my-other-profile --dry-run
 ```
 
+For multiple instances you can point --config-dir directly at any folder (e.g. the ones created by the GUI under `instances/Name`). The GUI's "Main" uses the primary config dir; additional ones live under its `instances/` subfolder (each with own targets.json + prompt.txt, sharing the root .env keys). When multiple run at briefing time via GUI auto-run they execute one after another.
+
 ## Getting API Keys
 
 - DeepSeek: https://platform.deepseek.com (recommended model: `deepseek-v4-flash`)
-- Apify (for Instagram scraping): https://apify.com (create account + get API token).  
-  The app is designed around the official actor **apify/instagram-scraper** (https://apify.com/apify/instagram-scraper).  
-  In `targets.json` you put usernames under the `"instagram"` key (e.g. `"instagram": ["cristiano", "nasa"]`).  
-  When you provide an `APIFY_API_KEY`, the gather step will run this actor to fetch real profile data + recent posts/reels instead of (or in addition to) weak web search results. The output gets passed to the LLM for the daily briefing.
 - Brave Search (optional): https://brave.com/search/api/
 - Tavily (optional): https://tavily.com
 - Vision override (optional, falls back to DeepSeek): any compatible OpenAI-style vision endpoint
+- Apify (optional, not used for Instagram): https://apify.com (only if you need it for something else)
 
 ### Telegram Setup (required - you must use your own bot)
 
@@ -237,16 +252,20 @@ duga init
 
 See `pyproject.toml` (uses src layout + console script).
 
-## Windows Desktop GUI (EXE) — 1.0.0 "Berkut-M"
+## Windows Desktop GUI (EXE) — 1.1.1 'Berkut-AM'
 
 Native Windows GUI using pure **tkinter + ttk** (exactly the same style as your PFR Reactor Sizer project — Segoe UI, LabelFrames, Notebook tabs, clean native widgets).
 
-- Version: 1.0.0 "Berkut-M"
+- Version: 1.1.1 'Berkut-AM'
 - Tabs: Prompt, Targets, API Keys & Telegram, Run & Schedule
-- Edit prompt, keywords, websites (as URLs), and all social platforms (handles/usernames). For Instagram, you list usernames in targets.json → they get fed to the `apify/instagram-scraper` actor (if you provide an APIFY_API_KEY) so richer profile + post data is included for the LLM.
+- Edit prompt, keywords, websites (as URLs), and all social platforms (handles/usernames). Instagram handles are scanned via direct profile URL + web search (like other platforms; "whole profile at once", private profiles yield what they yield).
 - Configure and save your API keys locally (LLM, Telegram bot, Apify, optional Brave/Tavily/Vision)
 - Manual run + live log
-- Checkbox for automatic daily execution at 12:00 GMT (app must stay running; can be minimized to tray)
+- Checkbox + time field for automatic daily execution at configurable HH:MM GMT (app must stay running; can be minimized to tray)
+- Right-click context menu (Cut/Copy/Paste/Select All) on the Prompt text area
+- Targets tab supports both list editors and direct raw JSON editing with Reload from disk + confirmation before overwrite to protect external edits
+- Multiple instances: click "New Instance" to name and create a dedicated folder under `instances/<name>/` (own prompt + targets per instance). Shared API keys (from root .env). Use the dropdown to switch instances for editing. Delete with confirmation.
+- When Auto-run is enabled and briefing time arrives, all discovered instances (Main + any under instances/) are queued and executed sequentially one at a time.
 
 ### Quick start from source
 
@@ -267,7 +286,7 @@ Then create the proper Windows installer:
 
 1. Download **Inno Setup** (free): https://jrsoftware.org/isinfo.php
 2. Open `windows\DugaInstaller.iss`
-3. Compile → produces `dist\DugaSetup-1.0.0-Berkut-M.exe`
+3. Compile → produces `dist\DugaSetup-1.1.1-Berkut-AM.exe`
 
 The installer:
 - Installs Duga as a proper application

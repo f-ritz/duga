@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
 import traceback
@@ -32,7 +33,7 @@ from .config import (
     load_prompt,
     load_targets,
 )
-from .gather import format_for_llm, gather_all
+from .gather import chunk_targets, count_target_entries, format_for_llm, gather_all
 from .history import (
     briefing_exists,
     format_recent_for_prompt,
@@ -40,7 +41,7 @@ from .history import (
     load_recent_briefings,
     save_briefing,
 )
-from .llm import analyze_images, generate_briefing
+from .llm import analyze_images, generate_briefing, synthesize_briefings
 from .telegram_bot import send_long_message
 
 log = logging.getLogger("duga")
@@ -76,8 +77,15 @@ def setup_argparser() -> argparse.ArgumentParser:
                    help="Override path to targets.json")
     p.add_argument("--prompt", type=Path, default=None,
                    help="Override path to prompt.txt")
+    p.add_argument("--chunk-size", type=int, default=None,
+                   help="Process targets in chunks of N entries (keywords + websites + social handles) and synthesize a final briefing. "
+                        "Default from DUGA_CHUNK_SIZE env (or 10). Set 0 to disable chunking and do one large call. "
+                        "Recommended when you have >15-20 total entries to keep prompts under practical quality limits of the model.")
+    p.add_argument("--ig-post-limit", type=int, default=None,
+                   help="Ignored for Instagram (now uses direct profile URL scan + search like other social; no post limit). "
+                        "Kept for compatibility.")
     p.add_argument("--schedule", action="store_true",
-                   help="Run continuously and trigger at 12:00 UTC daily (uses apscheduler)")
+                   help="Run continuously and trigger at 12:00 GMT/UTC daily (uses apscheduler; GUI allows changing the time)")
 
     sub = p.add_subparsers(dest="command")
     init_p = sub.add_parser("init", help="Bootstrap a new duga configuration directory")
@@ -169,6 +177,8 @@ def run_once(
     targets_path: Path | None = None,
     prompt_path: Path | None = None,
     config_dir: Path | None = None,
+    chunk_size: int | None = None,
+    ig_post_limit: int | None = None,
 ) -> int:
     _setup_logging()
     load_env()
@@ -192,46 +202,127 @@ def run_once(
     user_style = load_prompt(prompt_path)
     log.info("Loaded targets: %d keywords, %d social platforms, %d websites",
              len(targets.keywords), len(targets.social), len(targets.websites))
+    log.info("IG post limit per handle: %d", ig_post_limit)
+    if targets.keywords:
+        log.debug(f"Keywords: {targets.keywords[:10]}{'...' if len(targets.keywords)>10 else ''}")
+    if targets.websites:
+        log.debug(f"Websites (first few): {targets.websites[:3]}")
 
-    data = gather_all(targets)
-    collected_text = format_for_llm(data)
+    # Determine chunk size (CLI overrides env; default 10 so large target lists are fed in ~10-entry chunks)
+    if chunk_size is None:
+        chunk_size = int(get_env("DUGA_CHUNK_SIZE", "10") or 10)
+    os.environ["DUGA_CHUNK_SIZE"] = str(chunk_size)
+
+    if ig_post_limit is None:
+        ig_post_limit = int(get_env("DUGA_IG_POST_LIMIT", "3") or 3)
+    os.environ["DUGA_IG_POST_LIMIT"] = str(ig_post_limit)
+
+    total_entries = count_target_entries(targets)
+    use_chunking = bool(chunk_size and chunk_size > 0 and total_entries > chunk_size)
 
     recent = load_recent_briefings()
     recent_text = format_recent_for_prompt(recent)
     log.info("Loaded %d previous briefings for context", len(recent))
 
-    if dry_run:
-        print("\n" + "=" * 60)
-        print("DRY RUN — collected intelligence (first 4500 chars)")
-        print("=" * 60)
-        print(collected_text[:4500])
-        print("\n" + "=" * 60)
-        print("STYLE PROMPT")
-        print("=" * 60)
-        print(user_style[:2000])
-        print("\n[DRY RUN] No LLM call and no message was sent.")
-        return 0
+    if use_chunking:
+        log.info("Chunking mode: %d total entries → groups of %d (will synthesize final briefing)", total_entries, chunk_size)
+        target_chunks = chunk_targets(targets, chunk_size)
+        chunk_briefings: list[str] = []
 
-    # Optional vision
-    if data.media_urls:
+        for idx, mini_targets in enumerate(target_chunks, 1):
+            n = count_target_entries(mini_targets)
+            log.info("  [chunk %d/%d] Gathering for %d entries...", idx, len(target_chunks), n)
+            mini_data = gather_all(mini_targets)
+            mini_text = format_for_llm(mini_data)
+
+            # Optional vision per chunk (small)
+            if mini_data.media_urls:
+                try:
+                    analyses = analyze_images(mini_data.media_urls)
+                    if analyses:
+                        img_block = "\n\n## IMAGE ANALYSIS\n" + "\n".join(
+                            f"- {a['url']}: {a.get('description','')[:300]}" for a in analyses
+                        )
+                        mini_text += img_block
+                        log.info(f"  Chunk {idx}: added {len(analyses)} vision descriptions")
+                except Exception as e:
+                    log.warning("Vision skipped for chunk %d: %s", idx, e)
+
+            if dry_run:
+                print(f"\n--- DRY RUN CHUNK {idx}/{len(target_chunks)} ({n} entries) ---")
+                print(mini_text[:2200])
+                print("--- end chunk ---")
+                continue
+
+            log.info("    Calling LLM for chunk %d...", idx)
+            try:
+                # Chunks get no recent history (keeps each call small); synthesis gets the full recent
+                ch = generate_briefing(user_style, mini_text, recent_briefings_text="")
+                chunk_briefings.append(f"### Chunk {idx} ({n} entries)\n{ch}")
+            except Exception as e:
+                log.error("Chunk %d LLM failed: %s", idx, e)
+                chunk_briefings.append(f"### Chunk {idx}\n[LLM error: {e}]")
+
+        if dry_run:
+            print("\n" + "=" * 60)
+            print("DRY RUN — would synthesize the above chunks into one final briefing.")
+            print("Set DUGA_CHUNK_SIZE=0 or --chunk-size 0 to force a single full call.")
+            print("=" * 60)
+            return 0
+
+        if not chunk_briefings:
+            log.error("No chunk briefings produced.")
+            return 1
+
+        combined = "\n\n".join(chunk_briefings)
+        log.info("Synthesizing %d chunks into final briefing...", len(chunk_briefings))
         try:
-            analyses = analyze_images(data.media_urls)
-            if analyses:
-                img_block = "\n\n## IMAGE ANALYSIS\n" + "\n".join(
-                    f"- {a['url']}: {a.get('description','')[:300]}" for a in analyses
-                )
-                collected_text += img_block
+            briefing = synthesize_briefings(user_style, combined, recent_text)
         except Exception as e:
-            log.warning("Vision step skipped: %s", e)
+            log.error("Synthesis LLM failed: %s", e)
+            log.debug(traceback.format_exc())
+            save_briefing(today, f"# Synthesis failed\n\n{e}\n\n--- raw chunks below ---\n\n{combined}")
+            return 1
+    else:
+        # Original single-pass path (small target lists or chunking disabled)
+        data = gather_all(targets)
+        collected_text = format_for_llm(data)
+        log.info(f"Collected data size for LLM: {len(collected_text)} chars (before vision)")
 
-    log.info("Calling LLM...")
-    try:
-        briefing = generate_briefing(user_style, collected_text, recent_text)
-    except Exception as e:
-        log.error("LLM failed: %s", e)
-        log.debug(traceback.format_exc())
-        save_briefing(today, f"# Generation failed\n\n{e}")
-        return 1
+        if dry_run:
+            print("\n" + "=" * 60)
+            print("DRY RUN — collected intelligence (first 4500 chars)")
+            print("=" * 60)
+            print(collected_text[:4500])
+            print("\n" + "=" * 60)
+            print("STYLE PROMPT")
+            print("=" * 60)
+            print(user_style[:2000])
+            print("\n[DRY RUN] No LLM call and no message was sent.")
+            return 0
+
+        # Optional vision
+        if data.media_urls:
+            try:
+                analyses = analyze_images(data.media_urls)
+                if analyses:
+                    img_block = "\n\n## IMAGE ANALYSIS\n" + "\n".join(
+                        f"- {a['url']}: {a.get('description','')[:300]}" for a in analyses
+                    )
+                    collected_text += img_block
+                    log.info(f"Added {len(analyses)} vision descriptions to collected data")
+            except Exception as e:
+                log.warning("Vision step skipped: %s", e)
+
+        log.info(f"Final collected size before LLM: {len(collected_text)} chars")
+        log.info("Calling LLM (single pass)...")
+        try:
+            briefing = generate_briefing(user_style, collected_text, recent_text)
+        except Exception as e:
+            log.error("LLM failed: %s", e)
+            log.debug(traceback.format_exc())
+            save_briefing(today, f"# Generation failed\n\n{e}")
+            return 1
 
     if not briefing or len(briefing) < 30:
         log.error("LLM produced very little content.")
@@ -260,16 +351,17 @@ def run_scheduler_loop():
         log.error("Install apscheduler for --schedule mode: pip install apscheduler")
         return 1
 
-    log.info("Scheduler started. Will run at 12:00 UTC daily.")
+    log.info("Scheduler started. Will run at 12:00 GMT/UTC daily (configurable via GUI).")
 
     def job():
         try:
-            run_once(dry_run=False, force=False)
+            # limits resolved inside via env vars (DUGA_*)
+            run_once(dry_run=False, force=False, chunk_size=None, ig_post_limit=None)
         except Exception:
             log.exception("Scheduled job error")
 
     scheduler = BackgroundScheduler(timezone="UTC")
-    scheduler.add_job(job, "cron", hour=12, minute=0)
+    scheduler.add_job(job, "cron", hour=12, minute=0)  # default 12:00 GMT; GUI supports custom per-install
     scheduler.start()
 
     try:
@@ -323,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
         targets_path=args.targets,
         prompt_path=args.prompt,
         config_dir=cfg_dir,
+        chunk_size=getattr(args, "chunk_size", None),
+        ig_post_limit=getattr(args, "ig_post_limit", None),
     )
 
 

@@ -1,7 +1,7 @@
 """
 Duga Windows GUI - Desktop EXE version (pure tkinter + ttk)
 
-Duga 1.0.0 "Berkut-M"
+Duga 1.1.1 'Berkut-AM'
 
 Matches the clean native Windows style from the PFR Reactor Sizer project
 (Segoe UI, ttk widgets, LabelFrames, Notebook tabs).
@@ -14,7 +14,7 @@ Features added:
 - --minimized command line support (for startup)
 - Designed to run in background like a normal app
 
-Version: 0.2.3 "Berkut-V"
+Version: 1.1.1 'Berkut-AM'
 
 Requirements for tray:
     pip install pywin32   # only needed for development / full tray
@@ -78,7 +78,7 @@ try:
     APP_VERSION = DISPLAY_VERSION
 except Exception:
     HAS_RADAR_CORE = False
-    APP_VERSION = '1.0.0 "Berkut-M"'
+    APP_VERSION = '1.1.1 \'Berkut-AM\''
 
 
 def get_data_dir() -> Path:
@@ -101,10 +101,12 @@ ENV_FILE = DATA_DIR / ".env"
 ICON_NAMES = ["icon.ico", "radar.ico"]  # supports either name
 
 
-def load_targets() -> dict:
-    if TARGETS_FILE.exists():
+def load_targets(base_dir: Path | None = None) -> dict:
+    d = base_dir or DATA_DIR
+    f = d / "targets.json"
+    if f.exists():
         try:
-            return json.loads(TARGETS_FILE.read_text(encoding="utf-8"))
+            return json.loads(f.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {
@@ -114,18 +116,26 @@ def load_targets() -> dict:
     }
 
 
-def save_targets(data: dict) -> None:
-    TARGETS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+def save_targets(data: dict, base_dir: Path | None = None) -> None:
+    d = base_dir or DATA_DIR
+    f = d / "targets.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def load_prompt() -> str:
-    if PROMPT_FILE.exists():
-        return PROMPT_FILE.read_text(encoding="utf-8").strip()
+def load_prompt(base_dir: Path | None = None) -> str:
+    d = base_dir or DATA_DIR
+    f = d / "prompt.txt"
+    if f.exists():
+        return f.read_text(encoding="utf-8").strip()
     return "You are a concise, neutral daily intelligence briefer.\nFocus on high-signal developments only."
 
 
-def save_prompt(text: str) -> None:
-    PROMPT_FILE.write_text(text.strip(), encoding="utf-8")
+def save_prompt(text: str, base_dir: Path | None = None) -> None:
+    d = base_dir or DATA_DIR
+    f = d / "prompt.txt"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(text.strip(), encoding="utf-8")
 
 
 def load_env_dict() -> Dict[str, str]:
@@ -202,6 +212,11 @@ class EditableList(ttk.Frame):
 
     def get_items(self) -> List[str]:
         return self.items
+
+    def set_items(self, items: List[str]):
+        self.items = list(items)
+        self._refresh()
+        # intentionally do not call on_change
 
 
 # ----------------------------- System Tray ----------------------------------
@@ -310,11 +325,19 @@ class DugaApp:
         self.root.minsize(720, 560)
 
         self.data_dir = DATA_DIR
-        self.targets = load_targets()
-        self.prompt_text = load_prompt()
+        self.instances_dir = DATA_DIR / "instances"
+        self.instances_dir.mkdir(parents=True, exist_ok=True)
+        self.current_instance = "Main"
+        self.instance_dir = DATA_DIR
+        self.targets = load_targets(self.instance_dir)
+        self.prompt_text = load_prompt(self.instance_dir)
         self.env_data = load_env_dict()
         self.auto_run_enabled = False
         self.last_run_date = None
+        self.schedule_time = self._load_schedule_time()
+        self.chunk_size = self._load_chunk_size()
+        self.ig_posts_limit = self._load_ig_posts_limit()
+        self.json_loaded_mtime = 0
         self.tray: Optional[SystemTray] = None
 
         self._set_window_icon()
@@ -432,14 +455,58 @@ class DugaApp:
         self.status_label = ttk.Label(status_bar, text=f"Config: {self.data_dir}")
         self.status_label.pack(side="left")
 
+        # Auto-run checkbox on the far right
         self.auto_var = tk.BooleanVar(value=False)
         auto_cb = ttk.Checkbutton(
             status_bar,
-            text="Auto-run daily at 12:00 GMT (app must stay running - can be minimized to tray)",
+            text="Auto-run daily at configured time GMT (app must stay running - can be minimized to tray)",
             variable=self.auto_var,
             command=self._toggle_auto,
         )
         auto_cb.pack(side="right")
+
+        # Settings frame on the right; controls inside use label (left) then textbox (right) for clarity
+        settings_frame = ttk.Frame(status_bar)
+        settings_frame.pack(side="right")
+
+        # Time (GMT)
+        time_f = ttk.Frame(settings_frame)
+        time_f.pack(side="left", padx=4)
+        ttk.Label(time_f, text="Time (GMT):").pack(side="left")
+        self.time_var = tk.StringVar(value=self.schedule_time)
+        time_ent = ttk.Entry(time_f, textvariable=self.time_var, width=7)
+        time_ent.pack(side="left")
+        ttk.Button(time_f, text="Set", width=5, command=self._set_schedule_time).pack(side="left", padx=(2, 6))
+
+        # Chunk size
+        chunk_f = ttk.Frame(settings_frame)
+        chunk_f.pack(side="left", padx=4)
+        ttk.Label(chunk_f, text="Chunk size:").pack(side="left")
+        self.chunk_var = tk.StringVar(value=str(getattr(self, "chunk_size", 10)))
+        chunk_ent = ttk.Entry(chunk_f, textvariable=self.chunk_var, width=5)
+        chunk_ent.pack(side="left")
+        ttk.Button(chunk_f, text="Set", width=5, command=self._set_chunk_size).pack(side="left", padx=(2, 6))
+
+        # IG posts per profile
+        ig_f = ttk.Frame(settings_frame)
+        ig_f.pack(side="left", padx=4)
+        ttk.Label(ig_f, text="IG posts/profile:").pack(side="left")
+        self.ig_var = tk.StringVar(value=str(getattr(self, "ig_posts_limit", 3)))
+        ig_ent = ttk.Entry(ig_f, textvariable=self.ig_var, width=4)
+        ig_ent.pack(side="left")
+        ttk.Button(ig_f, text="Set", width=5, command=self._set_ig_posts_limit).pack(side="left", padx=(2, 6))
+
+        # Instance selector bar
+        inst_bar = ttk.Frame(self.root, padding=(8, 2))
+        inst_bar.pack(fill="x")
+        ttk.Label(inst_bar, text="Instance:").pack(side="left")
+        self.inst_combo = ttk.Combobox(inst_bar, state="readonly", width=18)
+        self.inst_combo.pack(side="left", padx=4)
+        self.inst_combo["values"] = self._list_instances()
+        self.inst_combo.set(self.current_instance)
+        self.inst_combo.bind("<<ComboboxSelected>>", self._on_instance_selected)
+        ttk.Button(inst_bar, text="New Instance", command=self.new_instance).pack(side="left", padx=2)
+        ttk.Button(inst_bar, text="Delete Instance...", command=self.delete_instance).pack(side="left", padx=2)
 
         # Tabs
         notebook = ttk.Notebook(self.root)
@@ -452,6 +519,7 @@ class DugaApp:
         self.prompt_text_widget = tk.Text(prompt_tab, height=18, wrap="word", font=("Segoe UI", 10))
         self.prompt_text_widget.pack(fill="both", expand=True, pady=4)
         self.prompt_text_widget.insert("1.0", self.prompt_text)
+        self._add_context_menu(self.prompt_text_widget)
         ttk.Button(prompt_tab, text="Save Prompt", command=self.save_prompt).pack(anchor="e")
 
         # TARGETS
@@ -474,11 +542,24 @@ class DugaApp:
         for plat in ["x", "instagram", "linkedin", "facebook", "threads"]:
             label = plat.capitalize()
             if plat == "instagram":
-                label = "Instagram (handles - scanned via Apify)"
+                label = "Instagram (handles - URL + search scan)"
             lst = EditableList(social_frame, label, social.get(plat, []),
                                lambda items, p=plat: self._update_social(p, items))
             lst.pack(fill="x", pady=2)
             self.social_lists[plat] = lst
+
+        # Advanced raw JSON editor for targets (with reload + overwrite confirm)
+        json_frame = ttk.LabelFrame(targets_tab, text="Advanced: Edit targets.json directly", padding=6)
+        json_frame.pack(fill="both", expand=True, pady=(8, 4))
+        ttk.Label(json_frame, text="Edit JSON manually or after external edits. 'Reload from Disk' loads current file (prevents clobber). Lists above auto-save on change.", font=("Segoe UI", 9)).pack(anchor="w")
+        self.json_text = tk.Text(json_frame, height=7, font=("Consolas", 9))
+        self.json_text.pack(fill="both", expand=True, pady=2)
+        self._add_context_menu(self.json_text)
+        jbtns = ttk.Frame(json_frame)
+        jbtns.pack(fill="x", pady=2)
+        ttk.Button(jbtns, text="Reload from Disk", command=self._reload_targets_json).pack(side="left", padx=2)
+        ttk.Button(jbtns, text="Validate & Save JSON", command=self._save_targets_json).pack(side="left", padx=2)
+        ttk.Button(jbtns, text="Sync from Lists", command=self._json_from_lists).pack(side="left", padx=2)
 
         # KEYS
         keys_tab = ttk.Frame(notebook, padding=10)
@@ -490,7 +571,7 @@ class DugaApp:
             ("DEEPSEEK_API_KEY", "LLM API Key (required)"),
             ("TELEGRAM_BOT_TOKEN", "Telegram Bot Token (your own bot)"),
             ("TELEGRAM_CHAT_ID", "Your Telegram Chat ID"),
-            ("APIFY_API_KEY", "Apify API Key (for Instagram)"),
+            ("APIFY_API_KEY", "Apify API Key (optional, not used for IG)"),
             ("BRAVE_API_KEY", "Brave Search API Key (optional)"),
             ("TAVILY_API_KEY", "Tavily API Key (optional)"),
             ("VISION_API_KEY", "Vision API Key (optional)"),
@@ -515,6 +596,8 @@ class DugaApp:
         self.run_status = ttk.Label(run_tab, text="Ready", font=("Segoe UI", 10))
         self.run_status.pack(anchor="w", pady=4)
 
+        ttk.Label(run_tab, text="Chunk size + IG posts/profile (top bar) control LLM input size. Lower IG limit = fewer posts from each handle. Adjust above then click Set.", font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
+
         ttk.Button(run_tab, text="▶ Run Briefing Now", command=self.run_now).pack(fill="x", pady=6)
 
         ttk.Label(run_tab, text="Activity Log", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
@@ -523,6 +606,16 @@ class DugaApp:
 
         self.log(f"Duga {APP_VERSION} started.")
         self.log(f"Data dir: {self.data_dir}")
+        self.log(f"Chunk size: {self.chunk_size} (0 disables; use the control above to change)")
+        self.log(f"IG posts per profile: {self.ig_posts_limit} (use the control above to change)")
+        # Populate initial raw JSON editor + mtime for overwrite protection
+        self._json_from_lists()
+        try:
+            jf = self.instance_dir / "targets.json"
+            if jf.exists():
+                self.json_loaded_mtime = jf.stat().st_mtime
+        except Exception:
+            pass
 
     def log(self, msg: str):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -531,19 +624,34 @@ class DugaApp:
         self.log_widget.see("end")
         self.log_widget.configure(state="disabled")
 
+    def _add_context_menu(self, widget: tk.Text):
+        """Add right-click Cut/Copy/Paste context menu to a Text widget."""
+        menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="Cut", command=lambda: widget.event_generate("<<Cut>>"))
+        menu.add_command(label="Copy", command=lambda: widget.event_generate("<<Copy>>"))
+        menu.add_command(label="Paste", command=lambda: widget.event_generate("<<Paste>>"))
+        menu.add_separator()
+        menu.add_command(label="Select All", command=lambda: widget.tag_add("sel", "1.0", "end"))
+        def show_menu(event):
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+        widget.bind("<Button-3>", show_menu)
+
     def _update_targets(self, key: str, items: List[str]):
         self.targets[key] = items
-        save_targets(self.targets)
+        save_targets(self.targets, self.instance_dir)
 
     def _update_social(self, platform: str, items: List[str]):
         if "social" not in self.targets:
             self.targets["social"] = {}
         self.targets["social"][platform] = items
-        save_targets(self.targets)
+        save_targets(self.targets, self.instance_dir)
 
     def save_prompt(self):
         text = self.prompt_text_widget.get("1.0", "end").strip()
-        save_prompt(text)
+        save_prompt(text, self.instance_dir)
         self.run_status.configure(text="Prompt saved.")
         self.log("Prompt saved.")
 
@@ -554,10 +662,311 @@ class DugaApp:
         self.run_status.configure(text="Keys saved.")
         self.log("Keys saved.")
 
+    def _get_instance_dir(self, name: str) -> Path:
+        if not name or name == "Main":
+            return self.data_dir
+        return self.instances_dir / name
+
+    def _list_instances(self) -> list[str]:
+        insts = ["Main"]
+        try:
+            if self.instances_dir.exists():
+                for d in sorted(self.instances_dir.iterdir()):
+                    if d.is_dir():
+                        insts.append(d.name)
+        except Exception:
+            pass
+        return insts
+
+    def _switch_to_instance(self, name: str):
+        if name == self.current_instance:
+            return
+        # Save current edits to its dir before switching away
+        try:
+            self.save_prompt()
+            save_targets(self.targets, self.instance_dir)
+        except Exception:
+            pass
+        self.current_instance = name
+        self.instance_dir = self._get_instance_dir(name)
+        # Load fresh for new instance
+        self.targets = load_targets(self.instance_dir)
+        self.prompt_text = load_prompt(self.instance_dir)
+        # Refresh widgets
+        self._refresh_targets_ui()
+        self._refresh_prompt_ui()
+        self.status_label.configure(text=f"Config: {self.instance_dir}")
+        self.log(f"Switched to instance: {name} (dir: {self.instance_dir})")
+        # refresh json editor mtime + content for the new instance
+        try:
+            jf = self.instance_dir / "targets.json"
+            self.json_loaded_mtime = jf.stat().st_mtime if jf.exists() else 0
+            self._json_from_lists()
+        except Exception:
+            pass
+
+    def _refresh_targets_ui(self):
+        try:
+            self.kw_list.set_items(self.targets.get("keywords", []))
+            self.web_list.set_items(self.targets.get("websites", []))
+            social = self.targets.get("social", {})
+            for plat, lst in self.social_lists.items():
+                lst.set_items(social.get(plat, []))
+        except Exception as e:
+            self.log(f"Refresh lists error: {e}")
+
+    def _refresh_prompt_ui(self):
+        try:
+            self.prompt_text_widget.delete("1.0", "end")
+            self.prompt_text_widget.insert("1.0", self.prompt_text or "")
+        except Exception:
+            pass
+
+    def _on_instance_selected(self, event=None):
+        name = self.inst_combo.get()
+        self._switch_to_instance(name)
+
+    def new_instance(self):
+        from tkinter import simpledialog
+        name = simpledialog.askstring(
+            "New Instance",
+            "Enter a name for the new instance (e.g. Work, News, Personal):\n\n"
+            "A folder will be created under instances/ with its own prompt + targets.\n"
+            "API keys are shared from the main .env ."
+        )
+        if not name:
+            return
+        safe = "".join(c for c in name.strip() if c.isalnum() or c in "-_")
+        if not safe:
+            messagebox.showerror("Invalid name", "Use letters, numbers, - or _ only.")
+            return
+        p = self.instances_dir / safe
+        p.mkdir(parents=True, exist_ok=True)
+        # Seed defaults only if missing (don't overwrite)
+        if not (p / "targets.json").exists():
+            default_t = {
+                "keywords": ["example keyword"],
+                "social": {"x": [], "instagram": [], "linkedin": [], "facebook": [], "threads": []},
+                "websites": []
+            }
+            save_targets(default_t, p)
+        if not (p / "prompt.txt").exists():
+            save_prompt("You are a concise, neutral daily intelligence briefer.\nFocus on high-signal developments only.", p)
+        # update combo and switch
+        vals = self._list_instances()
+        self.inst_combo["values"] = vals
+        self.inst_combo.set(safe)
+        self._switch_to_instance(safe)
+        self.log(f"Created new instance folder: instances/{safe}")
+
+    def delete_instance(self):
+        name = self.inst_combo.get()
+        if not name or name == "Main":
+            messagebox.showinfo("Delete", "The Main instance uses the root data dir and cannot be deleted here.")
+            return
+        if not messagebox.askyesno(
+            "Confirm Delete Instance",
+            f"Delete instance '{name}'?\n\n"
+            "This will remove its targets.json, prompt.txt and any briefings/logs inside its folder.\n"
+            "This cannot be undone."
+        ):
+            return
+        p = self._get_instance_dir(name)
+        try:
+            import shutil
+            shutil.rmtree(p)
+        except Exception as e:
+            messagebox.showerror("Delete failed", str(e))
+            return
+        vals = self._list_instances()
+        self.inst_combo["values"] = vals
+        self.inst_combo.set("Main")
+        self._switch_to_instance("Main")
+        self.log(f"Deleted instance: {name}")
+
+    def _reload_targets_json(self):
+        try:
+            jf = self.instance_dir / "targets.json"
+            if jf.exists():
+                raw = jf.read_text(encoding="utf-8")
+                self.json_text.delete("1.0", "end")
+                self.json_text.insert("1.0", raw)
+                self.json_loaded_mtime = jf.stat().st_mtime
+                self.log("Reloaded targets.json from disk into editor")
+            else:
+                messagebox.showinfo("No file", "No targets.json on disk yet.")
+        except Exception as e:
+            messagebox.showerror("Reload error", str(e))
+
+    def _json_from_lists(self):
+        try:
+            data = {
+                "keywords": self.kw_list.get_items() if hasattr(self, "kw_list") else self.targets.get("keywords", []),
+                "social": {p: (lst.get_items() if hasattr(lst, "get_items") else []) for p, lst in (getattr(self, "social_lists", {})).items()},
+                "websites": self.web_list.get_items() if hasattr(self, "web_list") else self.targets.get("websites", []),
+            }
+            self.json_text.delete("1.0", "end")
+            self.json_text.insert("1.0", json.dumps(data, indent=2))
+        except Exception as e:
+            self.log(f"Sync JSON from lists error: {e}")
+
+    def _save_targets_json(self):
+        try:
+            txt = self.json_text.get("1.0", "end").strip()
+            data = json.loads(txt)
+            jf = self.instance_dir / "targets.json"
+            # Prevent blind overwrite if file changed externally since load
+            if jf.exists():
+                try:
+                    cur_m = jf.stat().st_mtime
+                    if cur_m > (self.json_loaded_mtime or 0) + 1:
+                        if not messagebox.askyesno(
+                            "Confirm Overwrite",
+                            "targets.json on disk has been modified (externally?) since you loaded the editor.\n"
+                            "Overwrite it with the version in the editor?"
+                        ):
+                            return
+                except Exception:
+                    pass
+            save_targets(data, self.instance_dir)
+            self.targets = data
+            self._refresh_targets_ui()
+            try:
+                self.json_loaded_mtime = jf.stat().st_mtime
+            except Exception:
+                self.json_loaded_mtime = 0
+            self.log("Saved targets.json from editor + refreshed lists")
+            messagebox.showinfo("Saved", "targets.json saved and lists updated.")
+        except json.JSONDecodeError as je:
+            messagebox.showerror("Invalid JSON", f"JSON error: {je}")
+        except Exception as e:
+            messagebox.showerror("Save error", str(e))
+
+    def _load_schedule_time(self) -> str:
+        sf = self.data_dir / "settings.json"
+        if sf.exists():
+            try:
+                s = json.loads(sf.read_text(encoding="utf-8"))
+                t = str(s.get("run_time", "12:00"))
+                if ":" in t:
+                    return t
+            except Exception:
+                pass
+        return "12:00"
+
+    def _save_schedule_time(self, t: str):
+        sf = self.data_dir / "settings.json"
+        data: dict = {}
+        if sf.exists():
+            try:
+                data = json.loads(sf.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        data["run_time"] = t
+        sf.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _set_schedule_time(self):
+        t = self.time_var.get().strip()
+        try:
+            hh, mm = [int(x) for x in t.split(":", 1)]
+            if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                raise ValueError("out of range")
+            t = f"{hh:02d}:{mm:02d}"
+        except Exception:
+            messagebox.showerror("Invalid time", "Enter time as HH:MM (00-23:00-59), e.g. 12:00 or 09:15. Time is in GMT/UTC.")
+            self.time_var.set(self.schedule_time)
+            return
+        self.schedule_time = t
+        self._save_schedule_time(self.schedule_time)
+        self.log(f"Auto-run time set to {self.schedule_time} GMT")
+        try:
+            # refresh time var display
+            self.time_var.set(self.schedule_time)
+        except Exception:
+            pass
+
+    def _load_chunk_size(self) -> int:
+        sf = self.data_dir / "settings.json"
+        if sf.exists():
+            try:
+                s = json.loads(sf.read_text(encoding="utf-8"))
+                cs = s.get("chunk_size", 10)
+                return max(0, int(cs))
+            except Exception:
+                pass
+        return 10
+
+    def _save_chunk_size(self, val: int):
+        sf = self.data_dir / "settings.json"
+        data: dict = {}
+        if sf.exists():
+            try:
+                data = json.loads(sf.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        data["chunk_size"] = int(val)
+        sf.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _set_chunk_size(self):
+        try:
+            v = int(self.chunk_var.get().strip())
+            if v < 0:
+                v = 0
+        except Exception:
+            messagebox.showerror("Invalid chunk size", "Enter a non-negative integer. 0 disables chunking (single LLM call). 8-12 is recommended for large target lists.")
+            self.chunk_var.set(str(self.chunk_size))
+            return
+        self.chunk_size = v
+        self._save_chunk_size(self.chunk_size)
+        self.log(f"Chunk size set to {self.chunk_size} (0 = no chunking, one large call)")
+        try:
+            self.chunk_var.set(str(self.chunk_size))
+        except Exception:
+            pass
+
+    def _load_ig_posts_limit(self) -> int:
+        sf = self.data_dir / "settings.json"
+        if sf.exists():
+            try:
+                s = json.loads(sf.read_text(encoding="utf-8"))
+                lim = s.get("ig_posts_limit", 3)
+                return max(1, int(lim))  # at least 1
+            except Exception:
+                pass
+        return 3
+
+    def _save_ig_posts_limit(self, val: int):
+        sf = self.data_dir / "settings.json"
+        data: dict = {}
+        if sf.exists():
+            try:
+                data = json.loads(sf.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        data["ig_posts_limit"] = max(1, int(val))
+        sf.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _set_ig_posts_limit(self):
+        try:
+            v = int(self.ig_var.get().strip())
+            if v < 1:
+                v = 1
+        except Exception:
+            messagebox.showerror("Invalid IG limit", "Enter a positive integer (e.g. 3). Lower values reduce tokens for the LLM.")
+            self.ig_var.set(str(self.ig_posts_limit))
+            return
+        self.ig_posts_limit = v
+        self._save_ig_posts_limit(self.ig_posts_limit)
+        self.log(f"IG posts per profile set to {self.ig_posts_limit}")
+        try:
+            self.ig_var.set(str(self.ig_posts_limit))
+        except Exception:
+            pass
+
     def _toggle_auto(self):
         self.auto_run_enabled = self.auto_var.get()
         status = "ENABLED" if self.auto_run_enabled else "DISABLED"
-        self.log(f"Auto-run daily at 12:00 GMT {status} (runs even when minimized to tray).")
+        self.log(f"Auto-run daily at {self.schedule_time} GMT {status} (runs even when minimized to tray).")
         if self.tray:
             base = f"Duga {APP_VERSION}"
             extra = " [Auto]" if self.auto_run_enabled else ""
@@ -585,19 +994,35 @@ class DugaApp:
         self._perform_briefing()
 
     def _perform_briefing(self):
-        self.log("Starting briefing...")
+        self._perform_briefing_for_instance(self.current_instance)
+
+    def _perform_briefing_for_instance(self, name: str):
+        inst_dir = self._get_instance_dir(name)
+        is_current = (name == self.current_instance)
+        self.log(f"Starting briefing for instance '{name}'...")
         try:
-            self.save_prompt()
+            if is_current:
+                self.save_prompt()
+                save_targets(self.targets, self.instance_dir)
+            # else: run from on-disk state for that instance
             self.save_keys()
-            save_targets(self.targets)
 
             if HAS_RADAR_CORE:
-                os.environ["DUGA_CONFIG_DIR"] = str(self.data_dir)
+                for k, v in list(self.env_data.items()):
+                    if v:
+                        os.environ[k] = v
+                os.environ["DUGA_CONFIG_DIR"] = str(inst_dir)
+                # Use the GUI setting for chunk size (adjustable above; 0 = single pass)
+                cs = int(self.chunk_size) if hasattr(self, "chunk_size") else 10
+                os.environ["DUGA_CHUNK_SIZE"] = str(cs)
+                ig_lim = int(self.ig_posts_limit) if hasattr(self, "ig_posts_limit") else 3
+                os.environ["DUGA_IG_POST_LIMIT"] = str(ig_lim)
+                self.log(f"Using chunk size {cs}, IG posts/profile={ig_lim} for instance '{name}'")
                 import importlib
                 import duga.config as rcfg
                 importlib.reload(rcfg)
-                code = _run_once(dry_run=False, force=True)
-                self.log(f"Completed (exit {code}). Check Telegram.")
+                code = _run_once(dry_run=False, force=True, config_dir=inst_dir, chunk_size=cs, ig_post_limit=ig_lim)
+                self.log(f"Completed '{name}' (exit {code}). Check Telegram.")
             else:
                 self.log("Core not available in this session (full in EXE).")
 
@@ -618,14 +1043,31 @@ class DugaApp:
                 if not self.auto_run_enabled:
                     continue
                 now = datetime.now(timezone.utc)
-                if now.hour == 12 and now.minute < 1:
+                try:
+                    hh, mm = [int(x) for x in self.schedule_time.split(":", 1)]
+                except Exception:
+                    hh, mm = 12, 0
+                if now.hour == hh and now.minute < 1:
                     today = now.date().isoformat()
                     if self.last_run_date != today:
                         self.last_run_date = today
-                        self.log("Auto 12:00 GMT run...")
-                        self._perform_briefing()
+                        self.log(f"Auto {self.schedule_time} GMT run for all instances (queued)...")
+                        self._run_all_auto_instances()
             except Exception:
                 time.sleep(60)
+
+    def _run_all_auto_instances(self):
+        """Run every known instance sequentially (Main + any in instances/)."""
+        names = self._list_instances()
+        self.log(f"Queuing {len(names)} instance(s): {', '.join(names)}")
+        for name in names:
+            try:
+                self.log(f">>> Running queued instance: {name}")
+                self._perform_briefing_for_instance(name)
+                time.sleep(3)  # brief pause between queued runs
+            except Exception as e:
+                self.log(f"ERROR in queued instance {name}: {e}")
+        self.log("All queued auto-run instances completed.")
 
     def on_closing(self):
         # Already handled by protocol, but safe

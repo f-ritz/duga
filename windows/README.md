@@ -1,10 +1,10 @@
-# Duga Windows GUI + Installer (EXE) — 1.0.0 "Berkut-M"
+# Duga Windows GUI + Installer (EXE) — 1.1.1 'Berkut-AM'
 
-**Duga 1.0.0 "Berkut-M"**
+**Duga 1.1.1 'Berkut-AM'**
 
 Pure `tkinter` + `ttk` GUI matching your PFR Reactor Sizer style.
 
-Version codename: Berkut-M
+Version codename: Berkut-AM
 
 ## New Features (this update)
 - Proper application icon (`icon.ico`)
@@ -35,7 +35,7 @@ This produces a folder distribution at `dist\Duga\` (PyInstaller onedir mode) in
 1. Download & install **Inno Setup** (free): https://jrsoftware.org/isinfo.php
 2. Open `windows\DugaInstaller.iss`
 3. Press **Compile** (or F9)
-4. The installer `DugaSetup-1.0.0-Berkut-M.exe` will be created in `dist\`
+4. The installer `DugaSetup-1.1.1-Berkut-AM.exe` will be created in `dist\`
 
 The installer will:
 - Install to `%LocalAppData%\Duga`
@@ -49,6 +49,14 @@ The installer will:
 - Double-click tray icon → shows main window
 - Right-click tray → menu with "Show", "Run Briefing Now", "Exit"
 - Use tray "Exit" to fully quit
+
+## New in 1.1.1 'Berkut-AM'
+- Adjustable auto-run time (enter HH:MM GMT in the main bar + Set)
+- Right-click Cut/Copy/Paste menu in the Prompt editor
+- Targets tab: "Advanced: Edit targets.json directly" with Reload from Disk + Validate & Save (with confirmation if file was externally modified)
+- Multiple instances support: "New Instance" button (name it; folder created under `instances/<name>` with independent targets + prompt). Dropdown switches active instance for editing. "Delete Instance..." with confirm dialog.
+- Shared keys across instances (main .env); when auto-run fires, all instances (Main + sub ones) are executed sequentially one-by-one.
+- Version bump and docs.
 
 ## Icon
 Place `icon.ico` (recommended: 256×256 with 16/32/48/256 sizes) in the project root before building.

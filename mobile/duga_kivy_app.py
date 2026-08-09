@@ -1,5 +1,5 @@
 """
-Duga Mobile - Android APK GUI (Kivy) - 1.0.0 "Berkut-M"
+Duga Mobile - Android APK GUI (Kivy) - 1.1.1 'Berkut-AM'
 
 Features tabs for:
 - Prompt editor (writes prompt.txt)
@@ -148,7 +148,7 @@ class EditableList(BoxLayout):
 
 
 class DugaMobileApp(App):
-    title = "Duga 1.0.0 \"Berkut-M\""
+    title = "Duga 1.1.1 'Berkut-AM'"
 
     def build(self):
         self.data_dir = get_duga_data_dir()
@@ -312,7 +312,8 @@ class DugaMobileApp(App):
                     import duga.config as rcfg
                     importlib.reload(rcfg)
 
-                    result = _run_once(dry_run=False, force=True)
+                    # Chunked by default for large target lists
+                    result = _run_once(dry_run=False, force=True, chunk_size=10, ig_post_limit=3)
                     self.append_log(f"Core run finished with code: {result}")
                 else:
                     self.append_log("Core duga package not importable in this environment.")

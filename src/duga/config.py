@@ -203,13 +203,28 @@ def load_prompt(path: Path | str | None = None) -> str:
 
 
 def load_env(env_path: Path | str | None = None) -> None:
-    """Load .env from the config directory (or explicit path)."""
+    """Load .env from the config directory (or explicit path).
+    For instances/ subdirs, also tries the parent (shared keys) .env if no local one.
+    """
     p = Path(env_path) if env_path else DEFAULT_ENV
+    loaded = False
     if p.exists():
         load_dotenv(p)
+        loaded = True
     else:
-        # Also try the old behaviour of loading from CWD for backwards compat
-        load_dotenv()
+        # Support multi-instance: share keys from parent data dir .env when running a sub-instance
+        try:
+            if p.parent.name == "instances" or (p.parent / "instances").exists():
+                parent_env = p.parent.parent / ".env" if p.parent.name == "instances" else (p / ".." / ".env")
+                parent_env = parent_env.resolve()
+                if parent_env.exists():
+                    load_dotenv(parent_env)
+                    loaded = True
+        except Exception:
+            pass
+        if not loaded:
+            # Also try the old behaviour of loading from CWD for backwards compat
+            load_dotenv()
 
 
 def get_env(key: str, default: str | None = None) -> str | None:
